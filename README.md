@@ -20,3 +20,9 @@ Call the program with an image file. Only the upper left 320 times 200
 pixels are converted.
 
     graphconv <filename>
+
+# Links
+
+ * http://www.syntiac.com/tech_ga_c64.html
+ * http://www.spritemate.com/
+
