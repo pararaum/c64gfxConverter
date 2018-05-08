@@ -116,10 +116,10 @@ int main(int argc, char **argv) {
       } else {
 	std::cerr << "Can not create surface!\n";
       }
+      SDL_Delay(1000);
       SDL_DestroyRenderer(renderer);
       SDL_DestroyWindow(window);
     }
-    SDL_Delay(1000);
     SDL_Quit();
     ret = 0;
   }
