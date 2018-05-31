@@ -14,5 +14,5 @@ option "transparent" t "transparent colour index"
 
 defmode "sprite" modedesc="convert normal sprites"
 defmode "multi" modedesc="convert multicolour sprites"
-modeoption "multi1" - "multicolour 1" int mode="multi" default="1" optional
-modeoption "multi2" - "multicolour 2" int mode="multi" default="2" optional
+modeoption "multi1" - "multicolour 1 (bit pattern 01)" int mode="multi" default="1" optional
+modeoption "multi2" - "multicolour 2 (bit pattern 11)" int mode="multi" default="2" optional

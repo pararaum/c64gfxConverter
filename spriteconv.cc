@@ -2,12 +2,13 @@
  *
  */
 
-#include <iostream>
 #include <getopt.h>
+#include <iostream>
+#include <map>
+#include <cassert>
+#include <boost/format.hpp>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
-#include <map>
-#include <boost/format.hpp>
 #include "spriteconv_cli.h"
 
 bool display_image(SDL_Surface *surface, SDL_Renderer *renderer) {
@@ -26,7 +27,55 @@ bool display_image(SDL_Surface *surface, SDL_Renderer *renderer) {
 
 struct SpriteData {
   int pixel[24][21];
+
+  std::ostream &write_asm(std::ostream &out) {
+    for(int iy = 0; iy < 21; ++iy) {
+      out << "\t.byte";
+      for(int ix = 0; ix < 24; ix += 8) {
+	unsigned int value = 0;
+	for(int bit = 0; bit < 8; ++bit) {
+	  if(pixel[ix + bit][iy] != 0) {
+	    value |= 1 << (7 - bit);
+	  }
+	}
+	out << boost::format(" $%02X%c") % value % (ix < 16 ? ',' : ' ');
+      }
+      out << '\n';
+    }
+    out << "\t.byte $81";
+    return out;
+  }
 };
+
+int get_color(SDL_Surface *surface, int x, int y) {
+  assert(x >= 0);
+  assert(y >= 0);
+  Uint8 *pixelline = static_cast<Uint8 *>(surface->pixels);
+  pixelline += y * surface->pitch;
+  int pixel = pixelline[x];
+  return pixel;
+}
+
+/*! \brief convert image data to black and white sprite.
+ *
+ * The surface must be an 8 bit palette image!
+ * 
+ * \param 
+ */
+SpriteData convert_bw_sprite(SDL_Surface *surface, int xpos, int ypos, int transparent) {
+  int pixel;
+  SpriteData sprite;
+  
+  for(int row = 0; row < 21; ++row) {
+    for(int column = 0; column < 24; ++column) {
+      pixel = get_color(surface, xpos + column, ypos + row);
+      assert(pixel >= 0);
+      sprite.pixel[column][row] = pixel != transparent;
+    }
+  }
+  return sprite;
+}
+
 
 void convert_sprite(SDL_Surface *surface, int x, int y, int border) {
   SpriteData sprite;
@@ -66,21 +115,17 @@ void convert_sprite(SDL_Surface *surface, int x, int y, int border) {
   std::cout << boost::format("\t.byte $00\t\t ;; In original image at position $%04x.\n") % y;
 }
 
-void extract_sprite_data(SDL_Surface *surface) {
+void extract_sprite_data(SDL_Surface *surface, const gengetopt_args_info *args) {
   SDL_LockSurface(surface);
   if(surface->format->BitsPerPixel != 8) {
     std::cerr << "Unknown pixel format!\n";
   } else {
-    //   for(int y = 0; y < surface->h; ++y) {
-    //     for(int x = 0; x < surface->w; ++x) {
-    // 	sprintf(buf, "%02X", static_cast<Uint8 *>(surface->pixels)[surface->pitch * y + x]);
-    // 	std::cout << buf;
-    //     }
-    //     std::cout << std::endl;
-    //   }
-  }
-  for(int y = 0; y < surface->h - 21; y += 21 + 1) {
-    convert_sprite(surface, 0, y, 1);
+    if(args->multi_mode_counter == 0) { //No multicolour sprite
+      auto sprite = convert_bw_sprite(surface, args->x_position_arg, args->y_position_arg, args->transparent_arg);
+      sprite.write_asm(std::cout) << std::endl;
+    } else { //Multicolour
+      convert_sprite(surface, args->x_position_arg, args->y_position_arg, 0);
+    }
   }
   SDL_UnlockSurface(surface);
 }
@@ -92,6 +137,7 @@ int main(int argc, char **argv) {
   SDL_Surface *surface;
   gengetopt_args_info args_info;
   int ret = -1;
+  const char *fname;
 
   auto cli = cmdline_parser(argc, argv, &args_info);
   if(cli != 0) {
@@ -106,25 +152,26 @@ int main(int argc, char **argv) {
     std::cerr << "SDL_Init() failed: " << SDL_GetError() << std::endl;
     ret = 2;
   } else {
-    if(SDL_CreateWindowAndRenderer(800, 800, 0, &window, &renderer) < 0) {
+    if(SDL_CreateWindowAndRenderer(320, 200, 0, &window, &renderer) < 0) {
       std::cerr << "SDL_CreateWindowAndRenderer() failed: " << SDL_GetError() << std::endl;
       ret = 3;
     } else {
-      surface = IMG_Load(argv[1]);
+      fname = args_info.inputs[0];
+      surface = IMG_Load(fname);
       if(surface) {
-	SDL_SetWindowTitle(window, argv[1]);
-	SDL_SetWindowSize(window, surface->w, surface->h);
-	SDL_ShowWindow(window);
-	display_image(surface, renderer);
-	SDL_RenderPresent(renderer);
-	extract_sprite_data(surface);
+	// SDL_SetWindowTitle(window, fname);
+	// SDL_SetWindowSize(window, surface->w, surface->h);
+	// SDL_ShowWindow(window);
+	// display_image(surface, renderer);
+	// SDL_RenderPresent(renderer);
+	extract_sprite_data(surface, &args_info);
 	SDL_FreeSurface(surface);
       } else {
-	std::cerr << "Can not create surface!\n";
+	std::cerr << "Error! Can not create surface: " << SDL_GetError() << '\n';
       }
       SDL_Delay(1000);
-      SDL_DestroyRenderer(renderer);
-      SDL_DestroyWindow(window);
+      // SDL_DestroyRenderer(renderer);
+      // SDL_DestroyWindow(window);
     }
     SDL_Quit();
     ret = 0;
