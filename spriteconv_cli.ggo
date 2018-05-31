@@ -1,0 +1,18 @@
+package "spriteconv"
+version "0.0"
+purpose "Convert images to C64 sprites"
+
+option "x-position" x "X position of sprite in image"
+       int
+       default="0" optional
+option "y-position" y "Y position of sprite in image"
+       int
+       default="0" optional
+option "transparent" t "transparent colour index"
+       int
+       default="0" optional
+
+defmode "sprite" modedesc="convert normal sprites"
+defmode "multi" modedesc="convert multicolour sprites"
+modeoption "multi1" - "multicolour 1" int mode="multi" default="1" optional
+modeoption "multi2" - "multicolour 2" int mode="multi" default="2" optional

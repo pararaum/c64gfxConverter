@@ -4,10 +4,11 @@
 
 #include <iostream>
 #include <getopt.h>
-#include "SDL2/SDL.h"
-#include "SDL2/SDL_image.h"
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_image.h>
 #include <map>
 #include <boost/format.hpp>
+#include "spriteconv_cli.h"
 
 bool display_image(SDL_Surface *surface, SDL_Renderer *renderer) {
   SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
@@ -20,6 +21,7 @@ bool display_image(SDL_Surface *surface, SDL_Renderer *renderer) {
     SDL_DestroyTexture(texture);
     SDL_RenderPresent(renderer);
   }
+  return true;
 }
 
 struct SpriteData {
@@ -65,8 +67,6 @@ void convert_sprite(SDL_Surface *surface, int x, int y, int border) {
 }
 
 void extract_sprite_data(SDL_Surface *surface) {
-  char buf[8];
-  
   SDL_LockSurface(surface);
   if(surface->format->BitsPerPixel != 8) {
     std::cerr << "Unknown pixel format!\n";
@@ -89,12 +89,18 @@ void extract_sprite_data(SDL_Surface *surface) {
 int main(int argc, char **argv) {
   SDL_Window *window;
   SDL_Renderer *renderer;
-  SDL_Texture *texture;
   SDL_Surface *surface;
+  gengetopt_args_info args_info;
   int ret = -1;
 
-  if(argc < 2) {
-    std::cerr << "Usage: spriteconv <imagename>\n";
+  auto cli = cmdline_parser(argc, argv, &args_info);
+  if(cli != 0) {
+    std::cerr << "Error while parsind command line!\n";
+    return -1;
+  }
+  
+  if(args_info.inputs_num != 1) {
+    std::cerr << "Usage: spriteconv [options] <imagename>\n";
     ret = 1;
   } else if(SDL_Init(SDL_INIT_VIDEO) == -1) {
     std::cerr << "SDL_Init() failed: " << SDL_GetError() << std::endl;
