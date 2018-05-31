@@ -10,11 +10,13 @@ all:	$(BIN)
 graphconv:	graphconv.cc
 	$(CXX) -std=c++11 -o $@ $+ $(MAGICK) $(CXXFLAGS) $(CPPFLAGS)
 
-spriteconv:	spriteconv.o spriteconv_cli.h spriteconv_cli.o
+spriteconv:	spriteconv_cli.o spriteconv.o
 	$(CXX) -std=c++11 -o $@ $+ $(CXXFLAGS) $(CPPFLAGS) -lSDL2 -lSDL2_image
 
-spriteconv_cli.h:	spriteconv_cli.ggo
+spriteconv_cli.c:	spriteconv_cli.ggo
 	gengetopt -i $< -F spriteconv_cli -u
+
+spriteconv_cli.o: spriteconv_cli.c spriteconv_cli.ggo
 
 .PHONY: clean
 clean:
