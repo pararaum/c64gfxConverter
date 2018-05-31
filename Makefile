@@ -1,6 +1,6 @@
 MAGICK = `pkg-config --cflags --libs Magick++`
 CPPFLAGS = -DNDEBUG
-CXXFLAGS = -Wall -O2 -Wextra
+CXXFLAGS = -Wall -O2 -Wextra -std=c++14
 
 BIN = graphconv spriteconv
 
@@ -8,10 +8,10 @@ BIN = graphconv spriteconv
 all:	$(BIN)
 
 graphconv:	graphconv.cc
-	$(CXX) -std=c++11 -o $@ $+ $(MAGICK) $(CXXFLAGS) $(CPPFLAGS)
+	$(CXX) -std=c++14 -o $@ $+ $(MAGICK) $(CXXFLAGS) $(CPPFLAGS)
 
 spriteconv:	spriteconv_cli.o spriteconv.o
-	$(CXX) -std=c++11 -o $@ $+ $(CXXFLAGS) $(CPPFLAGS) -lSDL2 -lSDL2_image
+	$(CXX) -std=c++14 -o $@ $+ $(CXXFLAGS) $(CPPFLAGS) -lSDL2 -lSDL2_image
 
 spriteconv_cli.c:	spriteconv_cli.ggo
 	gengetopt -i $< -F spriteconv_cli -u

@@ -25,10 +25,16 @@ bool display_image(SDL_Surface *surface, SDL_Renderer *renderer) {
   return true;
 }
 
-struct SpriteData {
+struct SpriteInterface {
+  virtual std::ostream &write_asm(std::ostream &out) const = 0;
+  virtual int width() const = 0;
+  virtual int height() const = 0;
+};
+
+struct SpriteData : public SpriteInterface {
   int pixel[24][21];
 
-  std::ostream &write_asm(std::ostream &out) {
+  std::ostream &write_asm(std::ostream &out) const {
     for(int iy = 0; iy < 21; ++iy) {
       out << "\t.byte";
       for(int ix = 0; ix < 24; ix += 8) {
@@ -45,7 +51,43 @@ struct SpriteData {
     out << "\t.byte $81";
     return out;
   }
+  virtual int width() const { return 24; }
+  virtual int height() const { return 21; }
 };
+
+/*! \brief Multicoloured Sprite Data
+ *
+ * The information is stored in the C64 format. The colour information
+ * is [http://codebase64.org/doku.php?id=base:spriteintro]:
+ *
+ *  - 00: transparent
+ *  - 01: $d025
+ *  - 11: $d026
+ *  - 10: individual ($d027-$d02f)
+ */
+struct MultiSpriteData : public SpriteInterface {
+  int pixel[12][21];
+
+  std::ostream &write_asm(std::ostream &out) const {
+    for(int iy = 0; iy < 21; ++iy) {
+      out << "\t.byte";
+      for(int ix = 0; ix < 12; ix += 4) {
+	unsigned int value = 0;
+	for(int bit = 0; bit < 8; bit += 2) {
+	  value |= (pixel[ix + bit / 2][iy] & 3) << (6 - bit);
+	}
+	out << boost::format(" $%02X%c") % value % (ix < 8 ? ',' : ' ');
+      }
+      out << '\n';
+    }
+    out << "\t.byte $81";
+    return out;
+  }
+
+  virtual int width() const { return 12; }
+  virtual int height() const { return 21; }
+};
+
 
 int get_color(SDL_Surface *surface, int x, int y) {
   assert(x >= 0);
@@ -60,7 +102,10 @@ int get_color(SDL_Surface *surface, int x, int y) {
  *
  * The surface must be an 8 bit palette image!
  * 
- * \param 
+ * \param surface Surface to get the data from
+ * \param xpos X-Position of sprite in surface
+ * \param ypos Y-Position of sprite in surface
+ * \param transparent Colour index of transparent colour
  */
 SpriteData convert_bw_sprite(SDL_Surface *surface, int xpos, int ypos, int transparent) {
   int pixel;
@@ -71,6 +116,43 @@ SpriteData convert_bw_sprite(SDL_Surface *surface, int xpos, int ypos, int trans
       pixel = get_color(surface, xpos + column, ypos + row);
       assert(pixel >= 0);
       sprite.pixel[column][row] = pixel != transparent;
+    }
+  }
+  return sprite;
+}
+
+
+/*! \brief convert image data to a multicolour sprite.
+ *
+ * The surface must be an 8 bit palette image!
+ * 
+ * \param surface Surface to get the data from
+ * \param xpos X-Position of sprite in surface
+ * \param ypos Y-Position of sprite in surface
+ * \param transparent Colour index of transparent colour
+ * \param m1 Multicolour one
+ * \param m2 Multicolour two
+ */
+MultiSpriteData convert_multi_sprite(SDL_Surface *surface, int xpos, int ypos, int transparent, int m1, int m2) {
+  int pixel;
+  int pattern;
+  MultiSpriteData sprite;
+  
+  for(int row = 0; row < 21; ++row) {
+    for(int column = 0; column < 12; ++column) {
+      pixel = get_color(surface, xpos + column, ypos + row);
+      assert(pixel >= 0);
+      if(pixel == transparent) {
+	pattern = 0b00000000;
+      } else if(pixel == m1) {
+	pattern = 0b00000001;
+      } else if(pixel == m2) {
+	pattern = 0b00000011;
+      } else {
+	pattern = 0b00000010;
+      }
+      printf("%4d %4d %4d %02X\n", column, row, pixel, pattern);
+      sprite.pixel[column][row] = pattern;
     }
   }
   return sprite;
@@ -124,7 +206,9 @@ void extract_sprite_data(SDL_Surface *surface, const gengetopt_args_info *args) 
       auto sprite = convert_bw_sprite(surface, args->x_position_arg, args->y_position_arg, args->transparent_arg);
       sprite.write_asm(std::cout) << std::endl;
     } else { //Multicolour
-      convert_sprite(surface, args->x_position_arg, args->y_position_arg, 0);
+      //convert_sprite(surface, args->x_position_arg, args->y_position_arg, 0);
+      auto sprite = convert_multi_sprite(surface, args->x_position_arg, args->y_position_arg, args->transparent_arg, args->multi1_arg, args->multi2_arg);
+      sprite.write_asm(std::cout) << std::endl;
     }
   }
   SDL_UnlockSurface(surface);
