@@ -159,42 +159,29 @@ MultiSpriteData convert_multi_sprite(SDL_Surface *surface, int xpos, int ypos, i
 }
 
 
-void convert_sprite(SDL_Surface *surface, int x, int y, int border) {
-  SpriteData sprite;
+MultiSpriteData convert_sprite(SDL_Surface *surface, int x, int y, int border) {
+  MultiSpriteData sprite;
   std::map<int,int> pixelvalues;
   int maxpixelval = 0;
-  char buf[8];
   
   for(int iy = 0; iy < 21; ++iy) {
     Uint8 *pixelline = static_cast<Uint8 *>(surface->pixels);
     pixelline += (y + iy + border) * surface->pitch;
     for(int ix = 0; ix < 12; ++ix) {
       int pixel = pixelline[border + x + ix];
-      sprite.pixel[ix][iy] = pixel;
-      if(pixelvalues.find(pixel) == pixelvalues.end()) {
+      auto found = pixelvalues.find(pixel);
+      if(found == pixelvalues.end()) {
+	sprite.pixel[ix][iy] = maxpixelval;
 	pixelvalues[pixel] = maxpixelval++;
+      } else {
+	sprite.pixel[ix][iy] = found->second;
       }
-      //std::cout << ' ' << pixel << '|' << pixelvalues[pixel];
     }
-    //std::cout << '\n';
   }
   if(pixelvalues.size() > 4) {
     throw std::logic_error("too many pixel values");
   }
-  for(int iy = 0; iy < 21; ++iy) {
-    std::cout << "\t.byte";
-    for(int ix = 0; ix < 12; ix += 4) {
-      int pixel = pixelvalues[sprite.pixel[ix][iy]] << 6
-	| pixelvalues[sprite.pixel[ix + 1][iy]] << 4
-	| pixelvalues[sprite.pixel[ix + 2][iy]] << 2
-	| pixelvalues[sprite.pixel[ix + 3][iy]] << 0
-	;
-      sprintf(buf, " $%02X%c", pixel, ix < 8 ? ',' : ' ');
-      std::cout << buf;
-    }
-    std::cout << '\n';
-  }
-  std::cout << boost::format("\t.byte $00\t\t ;; In original image at position $%04x.\n") % y;
+  return sprite;
 }
 
 void extract_sprite_data(SDL_Surface *surface, const gengetopt_args_info *args) {
@@ -206,8 +193,12 @@ void extract_sprite_data(SDL_Surface *surface, const gengetopt_args_info *args) 
       auto sprite = convert_bw_sprite(surface, args->x_position_arg, args->y_position_arg, args->transparent_arg);
       sprite.write_asm(std::cout) << std::endl;
     } else { //Multicolour
-      //convert_sprite(surface, args->x_position_arg, args->y_position_arg, 0);
-      auto sprite = convert_multi_sprite(surface, args->x_position_arg, args->y_position_arg, args->transparent_arg, args->multi1_arg, args->multi2_arg);
+      MultiSpriteData sprite;
+      if(args->autocol_flag) {
+	sprite = convert_sprite(surface, args->x_position_arg, args->y_position_arg, 0);
+      } else {
+	sprite = convert_multi_sprite(surface, args->x_position_arg, args->y_position_arg, args->transparent_arg, args->multi1_arg, args->multi2_arg);
+      }
       sprite.write_asm(std::cout) << std::endl;
     }
   }
