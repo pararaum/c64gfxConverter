@@ -1,10 +1,11 @@
 #include <cmath>
 #include <Magick++.h>
 #include <iostream>
-#include <cstdio>
-#include <cassert>
-#include <vector>
-#include <iterator>
+
+/*
+ * Actually the convertion is currently to screen codes not to
+ * PETSCII. TODO: This needs to be fixed!
+ */
 
 const int petscii_block_chars[16] = {
   /* 0000 */ ' ', /* Nothing set */
