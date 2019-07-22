@@ -4,7 +4,7 @@
 
 /*
  * Actually the convertion is currently to screen codes not to
- * PETSCII. TODO: This needs to be fixed!
+ * PETSCII. TODO: This needs to be fixed! OR cmd-line switch!
  */
 
 const int petscii_block_chars[16] = {
