@@ -1,11 +1,15 @@
-MAGICK = `pkg-config --cflags --libs Magick++`
+MAGICK = $(shell pkg-config --cflags --libs Magick++)
 CPPFLAGS = -DNDEBUG
 CXXFLAGS = -Wall -O2 -Wextra -std=c++14
 
-BIN = graphconv spriteconv
+BIN = graphconv spriteconv petscii80x50
+
 
 .PHONY: all
 all:	$(BIN)
+
+petscii80x50:	petscii80x50.cc
+	$(CXX) -std=c++14 -o $@ $+ $(MAGICK) $(CXXFLAGS) $(CPPFLAGS)
 
 graphconv:	graphconv.cc
 	$(CXX) -std=c++14 -o $@ $+ $(MAGICK) $(CXXFLAGS) $(CPPFLAGS)
