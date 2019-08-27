@@ -26,3 +26,10 @@ pixels are converted.
  * http://www.syntiac.com/tech_ga_c64.html
  * http://www.spritemate.com/
 
+## Dithering algorithms ##
+
+ * https://www.r-bloggers.com/r-is-a-cool-image-editor-2-dithering-algorithms/
+ * http://www.tannerhelland.com/4660/dithering-eleven-algorithms-source-code/
+ * http://cv.ulichney.com/papers/2006-hexagonal-blue-noise.pdf
+ * http://ulichney.com/
+ * https://www.imaging.org/site/PDFS/Papers/1999/RP-0-93/1786.pdf
