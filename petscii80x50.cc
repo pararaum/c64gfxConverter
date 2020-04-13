@@ -2,6 +2,8 @@
 #include <Magick++.h>
 #include <iostream>
 
+#define DEFAULT_THRESHOLD 0.5
+
 /*
  * Actually the convertion is currently to screen codes not to
  * PETSCII. TODO: This needs to be fixed! OR cmd-line switch!
@@ -61,10 +63,7 @@ int main(int argc, char **argv) {
       std::cerr << "Resizing image from (" << img.columns() << '*' << img.rows() << ").\n";
       img.resize(Magick::Geometry(80, 50));
     }
-    /* Converting to the BilevelType did not work, do I have to use a
-       threshold filter or something? The imagemagick documentation is
-       pure CRAP! */
-    img.type(Magick::GrayscaleType);
+    img.threshold(DEFAULT_THRESHOLD);
     //img.display();
     scan_image(img);
   }
