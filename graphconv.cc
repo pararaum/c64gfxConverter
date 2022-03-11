@@ -73,17 +73,6 @@ std::vector<double> calc_distances(Magick::PixelPacket *view, unsigned long size
   return ret;
 }
 
-std::vector<double> calc_distances(Magick::Pixels *view) {
-  std::vector<double> ret(16);
-  unsigned x, y;
-
-  for(y = 0; y < view->rows(); ++y) {
-    for(x = 0; x < view->columns(); ++x) {
-    }
-  }
-  return ret;
-}
-
 
 std::vector<double> calc_distances(const Magick::Image &img, unsigned x_, unsigned y_, unsigned width, unsigned height) {
   std::vector<double> cdists(16);
