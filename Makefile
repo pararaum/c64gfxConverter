@@ -28,7 +28,11 @@ spriteconv_cli.c:	spriteconv_cli.ggo
 
 spriteconv_cli.o: spriteconv_cli.c spriteconv_cli.ggo
 
-.PHONY: clean
+.PHONY: clean install
 clean:
 	rm -f $(BIN) *.o
 	rm -f *_cli.c *_cli.h
+
+install:
+	install -d $(DESTDIR)/usr/local/bin
+	install $(BIN) $(DESTDIR)/usr/local/bin
