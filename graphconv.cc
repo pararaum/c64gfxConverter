@@ -8,6 +8,7 @@
 #include <list>
 #include <sstream>
 #include <fstream>
+#include "change_ending.hh"
 
 struct CharBlock {
   int idx1, idx2;
@@ -15,7 +16,8 @@ struct CharBlock {
 };
 
 /* Colors taken from Grafx2 */
-double c64colors[][3] = {
+//double c64colors[][3]
+std::vector<Magick::ColorRGB> c64colors {
   {  0.000000e+00,  0.000000e+00,  0.000000e+00 },
   {  1.000000e+00,  1.000000e+00,  1.000000e+00 },
   {  4.078431e-01,  2.156863e-01,  1.686275e-01 },
@@ -32,9 +34,23 @@ double c64colors[][3] = {
   {  6.039216e-01,  8.235294e-01,  5.176471e-01 },
   {  4.235294e-01,  3.686275e-01,  7.098039e-01 },
   {  5.843137e-01,  5.843137e-01,  5.843137e-01 },
-  {-1, -1, -1}
-};
+} ;
 
+
+/** \brief calculate the distance between colours
+
+    \param x first colour
+    \param y second colour
+    \return euclidian distance
+ */
+double col_dist(const Magick::ColorRGB &x, const Magick::ColorRGB &y) {
+  double dist;
+
+  dist = std::sqrt(std::pow(x.red() - y.red(), 2) +
+		   std::pow(x.green() - y.green(), 2) +
+		   std::pow(x.blue() - y.blue(), 2));
+  return dist;
+}
 
 void write_char_blocks(const std::list<CharBlock> &blocks, std::ostream &out, unsigned short addr = 0x2000) {
   std::cerr << "Writing blocks #" << blocks.size() << '\n';
@@ -83,9 +99,7 @@ std::vector<double> calc_distances(const Magick::Image &img, unsigned x_, unsign
     for(x = x_; x < x_ + width; ++x) {
       Magick::ColorRGB col(img.pixelColor(x, y));
       for(i = 0; i < 16; ++i) {
-	cdists[i] = std::sqrt(std::pow(col.red() - c64colors[i][0], 2) +
-			      std::pow(col.green() - c64colors[i][1], 2) +
-			      std::pow(col.blue() - c64colors[i][2], 2));
+	cdists[i] = col_dist(col, c64colors[i]);
       }
     }
   }
@@ -103,12 +117,8 @@ double calc_distances_2col(const Magick::Image &img, unsigned x_, unsigned y_, u
     for(x = x_; x < x_ + width; ++x) {
       Magick::ColorRGB col(img.pixelColor(x, y));
       //assert(col.red() <= 1 && col.green() <= 1 && col.blue() <= 1);
-      cdists[0] = std::sqrt(std::pow(col.red() - c64colors[cidx0][0], 2) +
-			    std::pow(col.green() - c64colors[cidx0][1], 2) +
-			    std::pow(col.blue() - c64colors[cidx0][2], 2));
-      cdists[1] = std::sqrt(std::pow(col.red() - c64colors[cidx1][0], 2) +
-			    std::pow(col.green() - c64colors[cidx1][1], 2) +
-			    std::pow(col.blue() - c64colors[cidx1][2], 2));
+      cdists[0] = col_dist(col, c64colors[cidx0]);
+      cdists[1] = col_dist(col, c64colors[cidx1]);
       if(cdists[0] < cdists[1]) {
 	total += cdists[0];
       } else {
@@ -131,12 +141,8 @@ std::vector<bool> get_bitmap(const Magick::Image &img, unsigned x_, unsigned y_,
   for(y = y_; y < y_ + 8; ++y) {
     for(x = x_; x < x_ + 8; ++x) {
       Magick::ColorRGB col(img.pixelColor(x, y));
-      cdists[0] = std::sqrt(std::pow(col.red() - c64colors[cidx0][0], 2) +
-			    std::pow(col.green() - c64colors[cidx0][1], 2) +
-			    std::pow(col.blue() - c64colors[cidx0][2], 2));
-      cdists[1] = std::sqrt(std::pow(col.red() - c64colors[cidx1][0], 2) +
-			    std::pow(col.green() - c64colors[cidx1][1], 2) +
-			    std::pow(col.blue() - c64colors[cidx1][2], 2));
+      cdists[0] = col_dist(col, c64colors[cidx0]);
+      cdists[1] = col_dist(col, c64colors[cidx1]);
       ret.push_back(cdists[0] < cdists[1]);
     }
   }
@@ -152,12 +158,8 @@ double replace_color_in_block(Magick::Image &img, unsigned x_, unsigned y_, unsi
   for(y = y_; y < y_ + height; ++y) {
     for(x = x_; x < x_ + width; ++x) {
       Magick::ColorRGB col(img.pixelColor(x, y));
-      cdists[0] = std::sqrt(std::pow(col.red() - c64colors[cidx0][0], 2) +
-			    std::pow(col.green() - c64colors[cidx0][1], 2) +
-			    std::pow(col.blue() - c64colors[cidx0][2], 2));
-      cdists[1] = std::sqrt(std::pow(col.red() - c64colors[cidx1][0], 2) +
-			    std::pow(col.green() - c64colors[cidx1][1], 2) +
-			    std::pow(col.blue() - c64colors[cidx1][2], 2));
+      cdists[0] = col_dist(col, c64colors[cidx0]);
+      cdists[1] = col_dist(col, c64colors[cidx1]);
       if(cdists[0] < cdists[1]) {
 	idx = cidx0;
 	total += cdists[0];
@@ -165,9 +167,7 @@ double replace_color_in_block(Magick::Image &img, unsigned x_, unsigned y_, unsi
 	idx = cidx1;
 	total += cdists[1];
       }
-      col.red(c64colors[idx][0]);
-      col.green(c64colors[idx][1]);
-      col.blue(c64colors[idx][2]);
+      col = c64colors[idx];
       img.pixelColor(x, y, col);
     }
   }
@@ -239,14 +239,11 @@ void handle_image(Magick::Image &img, unsigned x_, unsigned y_, unsigned width, 
   Magick::ColorRGB col(img.pixelColor(0,0));
   std::cout << col.red() << ' ' << col.green() << ' ' << col.blue() << std::endl;
   for(i = 0; i < 16; ++i) {
-    dist = std::sqrt(std::pow(col.red() - c64colors[i][0], 2) +
-		     std::pow(col.green() - c64colors[i][1], 2) +
-		     std::pow(col.blue() - c64colors[i][2], 2));
-    
+    dist = col_dist(col, c64colors[i]);
     printf("%02X %13.6e %13.6e %13.6e %13.6E\n", i,
-	   std::abs(col.red() - c64colors[i][0]),
-	   std::abs(col.green() - c64colors[i][1]),
-	   std::abs(col.blue() - c64colors[i][2]),
+	   std::abs(col.red() - c64colors[i].red()),
+	   std::abs(col.green() - c64colors[i].green()),
+	   std::abs(col.blue() - c64colors[i].blue()),
 	   dist
 	   );
   }
@@ -254,24 +251,15 @@ void handle_image(Magick::Image &img, unsigned x_, unsigned y_, unsigned width, 
     for(x = x_; x < x_ + width; ++x) {
       Magick::ColorRGB col(img.pixelColor(x, y));
       for(i = 0; i < 16; ++i) {
-	cdists[i] = std::sqrt(std::pow(col.red() - c64colors[i][0], 2) +
-			      std::pow(col.green() - c64colors[i][1], 2) +
-			      std::pow(col.blue() - c64colors[i][2], 2));
+	cdists[i] = col_dist(col, c64colors[i]);
       }
       dptr = std::min_element(cdists, cdists + 16);
       i = std::distance(cdists, dptr);
       assert((i >= 0) && (i < 16));
-      col.red(c64colors[i][0]);
-      col.green(c64colors[i][1]);
-      col.blue(c64colors[i][2]);
+      col = c64colors[i];
       img.pixelColor(x, y, col);
     }
   }
-}
-
-std::string change_ending(std::string fn, const char *ending) {
-  fn = fn.substr(0, fn.rfind('.')) + '.' + ending;
-  return fn;
 }
 
 int main(int argc, char **argv) {
