@@ -197,8 +197,16 @@ void extract_sprite_data(SDL_Surface *surface, const gengetopt_args_info *args) 
   if(surface->format->BitsPerPixel != 8) {
     std::cerr << "Unknown pixel format!\n";
   } else {
-    for(y = 0; y * rowheight + args->y_position_arg < surface->h; y++) {
-      for(x = 0; x * columnwidth + args->x_position_arg < surface->w; x++) {
+    for(y = 0;
+	(y < args->spritecolumns_arg)
+	  || ((args->spritecolumns_arg < 0)
+	      && (y * rowheight + args->y_position_arg < surface->h));
+	y++) {
+      for(x = 0;
+	  (x < args->spriterows_arg)
+	    || ((args->spriterows_arg < 0)
+		&& (x * columnwidth + args->x_position_arg < surface->w));
+	  x++) {
 	auto x_position = x * columnwidth + args->x_position_arg;
 	auto y_position = y * columnwidth + args->y_position_arg;
 	if(args->labelname_given) {

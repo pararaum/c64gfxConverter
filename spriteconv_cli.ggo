@@ -14,10 +14,10 @@ option "transparent" t "transparent colour index"
 option "labelname" - "name to use for the label where the sprite data starts"
        string
        optional
-option "spritecolumns" - "number of sprite columns in the sprite sheet"
+option "spritecolumns" - "number of sprite columns in the sprite sheet (if < 0 then use whole width)"
        int
        default="1" optional
-option "spriterows" - "number of sprite rows in the sprite sheet"
+option "spriterows" - "number of sprite rows in the sprite sheet (if < 0 the use whole height)"
        int
        default="1" optional
 option "columnwidth" - "width of a sprite in the spritesheet"
