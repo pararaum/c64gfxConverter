@@ -12,6 +12,10 @@ option "transparent" t "transparent colour index"
        int
        default="0" optional
 
+option "labelname" - "name to use for the label where the sprite data starts"
+       string
+       optional
+
 defmode "sprite" modedesc="convert normal sprites"
 defmode "multi" modedesc="convert multicolour sprites"
 

@@ -189,6 +189,9 @@ void extract_sprite_data(SDL_Surface *surface, const gengetopt_args_info *args) 
   if(surface->format->BitsPerPixel != 8) {
     std::cerr << "Unknown pixel format!\n";
   } else {
+    if(args->labelname_given) {
+      std::cout << args->labelname_arg << ":\n";
+    }
     if(args->multi_mode_counter == 0) { //No multicolour sprite
       auto sprite = convert_bw_sprite(surface, args->x_position_arg, args->y_position_arg, args->transparent_arg);
       sprite.write_asm(std::cout) << std::endl;
