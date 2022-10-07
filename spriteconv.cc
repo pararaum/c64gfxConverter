@@ -200,12 +200,12 @@ void extract_sprite_data(SDL_Surface *surface, const gengetopt_args_info *args) 
     for(y = 0;
 	(y < args->spritecolumns_arg)
 	  || ((args->spritecolumns_arg < 0)
-	      && (y * rowheight + args->y_position_arg < surface->h));
+	      && (y * rowheight + args->y_position_arg < surface->h - columnwidth));
 	y++) {
       for(x = 0;
 	  (x < args->spriterows_arg)
 	    || ((args->spriterows_arg < 0)
-		&& (x * columnwidth + args->x_position_arg < surface->w));
+		&& (x * columnwidth + args->x_position_arg < surface->w - rowheight));
 	  x++) {
 	auto x_position = x * columnwidth + args->x_position_arg;
 	auto y_position = y * columnwidth + args->y_position_arg;
