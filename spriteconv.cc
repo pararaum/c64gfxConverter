@@ -1,5 +1,9 @@
 /*! \file Simple program to convert an image to a C64 sprite.
  *
+ * Every sprite has the 63 bytes of sprite data and the last byte
+ * contains metadata.
+ *
+ * see https://csdb.dk/forums/?roomid=7&topicid=125812
  */
 
 #include <getopt.h>
@@ -48,7 +52,7 @@ struct SpriteData : public SpriteInterface {
       }
       out << '\n';
     }
-    out << "\t.byte $81";
+    out << "\t.byte $00";
     return out;
   }
   virtual int width() const { return 24; }
@@ -80,7 +84,7 @@ struct MultiSpriteData : public SpriteInterface {
       }
       out << '\n';
     }
-    out << "\t.byte $81";
+    out << "\t.byte $80";
     return out;
   }
 
@@ -186,9 +190,9 @@ MultiSpriteData convert_sprite(SDL_Surface *surface, int x, int y, int border) {
 
 void extract_sprite_data(SDL_Surface *surface, const gengetopt_args_info *args) {
   int x, y;
-  
   auto rowheight = args->rowheight_arg;
   auto columnwidth = args->columnwidth_arg;
+
   SDL_LockSurface(surface);
   if(surface->format->BitsPerPixel != 8) {
     std::cerr << "Unknown pixel format!\n";
