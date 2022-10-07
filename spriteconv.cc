@@ -185,25 +185,35 @@ MultiSpriteData convert_sprite(SDL_Surface *surface, int x, int y, int border) {
 }
 
 void extract_sprite_data(SDL_Surface *surface, const gengetopt_args_info *args) {
+  int x, y;
+  
+  auto rowheight = args->rowheight_arg;
+  auto columnwidth = args->columnwidth_arg;
   SDL_LockSurface(surface);
   if(surface->format->BitsPerPixel != 8) {
     std::cerr << "Unknown pixel format!\n";
   } else {
-    if(args->labelname_given) {
-      std::cout << args->labelname_arg << ":\n";
-    }
-    if(args->multi_mode_counter == 0) { //No multicolour sprite
-      auto sprite = convert_bw_sprite(surface, args->x_position_arg, args->y_position_arg, args->transparent_arg);
-      sprite.write_asm(std::cout) << std::endl;
-    } else { //Multicolour
-      MultiSpriteData sprite;
-      if(args->autocol_flag) {
-	sprite = convert_sprite(surface, args->x_position_arg, args->y_position_arg, 0);
-      } else {
-	sprite = convert_multi_sprite(surface, args->x_position_arg, args->y_position_arg, args->transparent_arg, args->multi1_arg, args->multi2_arg);
-      }
-      sprite.write_asm(std::cout) << std::endl;
-    }
+    for(y = 0; y * rowheight + args->y_position_arg < surface->h; y++) {
+      for(x = 0; x * columnwidth + args->x_position_arg < surface->w; x++) {
+	auto x_position = x * columnwidth + args->x_position_arg;
+	auto y_position = y * columnwidth + args->y_position_arg;
+	if(args->labelname_given) {
+	  std::cout << args->labelname_arg << x << y << ":\n";
+	}
+	if(args->multi_mode_counter == 0) { //No multicolour sprite
+	  auto sprite = convert_bw_sprite(surface, x_position, y_position, args->transparent_arg);
+	  sprite.write_asm(std::cout) << std::endl;
+	} else { //Multicolour
+	  MultiSpriteData sprite;
+	  if(args->autocol_flag) {
+	    sprite = convert_sprite(surface, x_position, y_position, 0);
+	  } else {
+	    sprite = convert_multi_sprite(surface, x_position, y_position, args->transparent_arg, args->multi1_arg, args->multi2_arg);
+	  }
+	  sprite.write_asm(std::cout) << std::endl;
+	}
+      } // Finish column.
+    } // Finish rows.
   }
   SDL_UnlockSurface(surface);
 }
