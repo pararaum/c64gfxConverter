@@ -5,7 +5,7 @@ MAGICK = $(shell pkg-config --cflags --libs Magick++)
 CPPFLAGS = -DNDEBUG
 CXXFLAGS = -Wall -O2 -Wextra $(shell pkg-config --cflags Magick++)
 
-BIN = graphconv spriteconv petscii80x50 chargenconv
+BIN = graphconv spriteconv petscii80x50 chargenconv petsciiconvert
 
 
 .PHONY: all
@@ -27,6 +27,15 @@ spriteconv_cli.c:	spriteconv_cli.ggo
 	gengetopt -i $< -F spriteconv_cli -u
 
 spriteconv_cli.o: spriteconv_cli.c spriteconv_cli.ggo
+
+petsciiconvert_cli.c:	petsciiconvert_cli.ggo
+	gengetopt -i $< -F $(basename $@) -u
+
+petsciiconvert_cli.o: petsciiconvert_cli.c petsciiconvert_cli.ggo
+
+petsciiconvert: petsciiconvert_cli.o parse-petsciifile.o compare_frames.o petsciiconvert.o
+	$(CXX) -o $@ $+ $(CXXFLAGS) $(CPPFLAGS)
+
 
 .PHONY: clean install
 clean:

@@ -1,0 +1,10 @@
+package "petsciiconverter"
+version "0.0"
+purpose "Convert PETSCII animation to ASM code"
+
+defmode "animation" modedesc="Animation mode, will write function to poke the differences. This is the default mode."
+defmode "binout" modedesc="Output the frames into a binary file without further processing."
+
+modeoption "ping-pong" p "do a ping pong animation" mode="animation" flag off
+
+modeoption "output-bin" o "output file for the binary data" mode="binout" string
