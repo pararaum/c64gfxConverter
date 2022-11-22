@@ -1,4 +1,5 @@
 #include "petsciiframes.hh"
+#include <limits>
 #include <cassert>
 
 std::vector<std::optional<std::pair<unsigned, unsigned>>> compare_frames(const Frame &prev, const Frame &next) {
