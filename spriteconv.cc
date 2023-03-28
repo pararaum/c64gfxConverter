@@ -208,7 +208,7 @@ void extract_sprite_data(SDL_Surface *surface, const gengetopt_args_info *args) 
 		&& (x * columnwidth + args->x_position_arg < surface->w - columnwidth));
 	  x++) {
 	auto x_position = x * columnwidth + args->x_position_arg;
-	auto y_position = y * columnwidth + args->y_position_arg;
+	auto y_position = y * rowheight + args->y_position_arg;
 	if(args->labelname_given) {
 	  std::cout << args->labelname_arg << x << y << ":\n";
 	}
