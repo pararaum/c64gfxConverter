@@ -35,7 +35,14 @@ On a Debian based system the following command will do:
 
     sudo apt-get install libmagick++-dev libsdl2-image-dev libsdl2-dev
 
+If you forgot to clone the repository recursively then install and
+update the git submodules with
+
+    git submodule init
+    git submodule update
+
 Then issue "make".
+
 
 # Usage #
 

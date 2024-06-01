@@ -8,3 +8,4 @@ defmode "binout" modedesc="Output the frames into a binary file without further 
 modeoption "ping-pong" p "do a ping pong animation" mode="animation" flag off
 
 modeoption "output-bin" o "output file for the binary data" mode="binout" string
+modeoption "start-addr" s "start address of the binary data" mode="binout" long optional

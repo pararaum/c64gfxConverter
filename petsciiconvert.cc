@@ -66,10 +66,23 @@ loop%u:	  lda	%s+2+%u*40+%u,x
   return names;
 }
 
-void mode_binary_output(const char *outputname, const FrameArray &framearr) {
-  std::ofstream output(outputname);
+
+/*! write only the frames as binary output
+ *
+ * \param outputname output file name
+ * \param framearr frames to convert
+ * \param startaddr optionally write this start address to the output file
+ */
+void mode_binary_output(const char *outputname, const FrameArray &framearr, std::optional<unsigned short> startaddr) {
+  std::ofstream output(outputname, std::ios::binary);
   string basename(outputname);
 
+  if(startaddr) {
+    auto const stad = startaddr.value();
+    output.put(stad & 0xff);
+    output.put((stad >> 8) & 0xff);
+    cerr << "Start address is specified as: " << stad << endl;
+  }
   std::for_each(basename.begin(), basename.end(),
 		[](char &c) {
 		  if(!isalnum(c)) {
@@ -85,6 +98,12 @@ void mode_binary_output(const char *outputname, const FrameArray &framearr) {
   cout << basename << "_end = " << output.tellp() << endl;
 }
 
+/*! main code
+ *
+ * \param argc number of cli arguments
+ * \param argv command line parameters
+ * \return 0 if ok
+ */
 int main(int argc, char **argv) {
   FrameArray framearr;
   std::istream *in = &std::cin;
@@ -115,7 +134,11 @@ int main(int argc, char **argv) {
   }
   cerr << "Found " << framearr.size() << " frames.\n";
   if(args_info.output_bin_given) { // use binary output mode
-    mode_binary_output(args_info.output_bin_arg, framearr);
+    std::optional<unsigned short> startaddr;
+    if(args_info.start_addr_given) {
+      startaddr = args_info.start_addr_arg;
+    }
+    mode_binary_output(args_info.output_bin_arg, framearr, startaddr);
   } else { // default mode is animation mode
     cout << ";\twidth=" << framearr.width << ", height=" << framearr.height << std::endl;
     cout << "\t.import ANIMATIONSCREEN\n";
