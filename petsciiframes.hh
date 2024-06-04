@@ -80,6 +80,11 @@ struct FrameArray {
   int height;
   std::vector<Frame> frames;
   std::vector<Frame>::size_type size() const { return frames.size(); };
+  std::vector<Frame>::iterator begin() { return frames.begin(); }
+  std::vector<Frame>::iterator end() { return frames.end(); }
+  std::vector<Frame>::iterator erase(std::vector<Frame>::const_iterator begin, std::vector<Frame>::const_iterator end) {
+    return frames.erase(begin, end);
+  }
   const Frame &operator[](unsigned i) const { return frames.at(i); };
 };
 

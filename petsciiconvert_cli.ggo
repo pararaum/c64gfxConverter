@@ -2,6 +2,9 @@ package "petsciiconverter"
 version "0.0"
 purpose "Convert PETSCII animation to ASM code"
 
+option "first" - "first frame to include" int optional
+option "last"  - "last frame to include" int optional
+
 defmode "animation" modedesc="Animation mode, will write function to poke the differences. This is the default mode."
 defmode "binout" modedesc="Output the frames into a binary file without further processing."
 

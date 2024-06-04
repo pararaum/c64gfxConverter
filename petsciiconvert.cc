@@ -127,6 +127,22 @@ int main(int argc, char **argv) {
   // Parse!
   try {
     framearr = parse_file(*in);
+    if(args_info.last_given) {
+      if(static_cast<unsigned int>(args_info.last_arg) >= framearr.size()) {
+	cerr << "Error! Last frame bigger than available frames.\n";
+	return 3;
+      }
+      framearr.erase(framearr.begin() + args_info.last_arg + 1, framearr.end());
+      cerr << "Only up to frame: " << args_info.last_arg << endl;
+    }
+    if(args_info.first_given) {
+      if(static_cast<unsigned int>(args_info.first_arg) >= framearr.size()) {
+	cerr << "Error! First frame bigger than available frames.\n";
+	return 3;
+      }
+      framearr.erase(framearr.begin(), framearr.begin() + args_info.first_arg);
+      cerr << "From frame: " << args_info.first_arg << endl;
+    }
   }
   catch(const std::invalid_argument &excp) {
     cerr << "Parsing failed: " << excp.what() << std::endl;
