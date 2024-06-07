@@ -72,16 +72,21 @@ loop%u:	  lda	%s+2+%u*40+%u,x
  * \param outputname output file name
  * \param framearr frames to convert
  * \param startaddr optionally write this start address to the output file
+ * \param singfram single frame option
  */
-void mode_binary_output(const char *outputname, const FrameArray &framearr, std::optional<unsigned short> startaddr) {
-  std::ofstream output(outputname, std::ios::binary);
+void mode_binary_output(const char *outputname, const FrameArray &framearr, std::optional<unsigned short> startaddr, bool singfram) {
   string basename(outputname);
+  /* Write startaddr if given */
+  auto writestart = [startaddr](std::ostream &out) {
+    if(startaddr) {
+      auto const stad = startaddr.value();
+      out.put(stad & 0xff);
+      out.put((stad >> 8) & 0xff);
+    }
+  };
 
   if(startaddr) {
-    auto const stad = startaddr.value();
-    output.put(stad & 0xff);
-    output.put((stad >> 8) & 0xff);
-    cerr << "Start address is specified as: " << stad << endl;
+    cerr << "Start address is specified as: " << startaddr.value() << endl;
   }
   std::for_each(basename.begin(), basename.end(),
 		[](char &c) {
@@ -89,13 +94,37 @@ void mode_binary_output(const char *outputname, const FrameArray &framearr, std:
 		    c = '_';
 		  }
 		});
-  for(auto &frame : framearr.frames) {
-    string offset = frame.name + "_offset";
-    cout << offset << " = " << output.tellp() << endl;
-    cout << frame.name << "_addr = " << basename << "_base + " << offset << endl;
-    frame.save(output);
+  if(singfram) {
+    std::ostringstream asmout;
+    std::vector<std::string> labels;
+    for(unsigned frame = 0; frame < framearr.size(); ++frame) {
+      string outnam(str(boost::format("%s.%04u") % outputname % frame));
+      string outlabel(str(boost::format("%s_%04u") % basename % frame));
+      labels.push_back(outlabel);
+      cerr << "Writing frame " << frame << endl;
+      std::ofstream output(outnam, std::ios::binary);
+      framearr[frame].save(output);
+      asmout << boost::format("%s:\n\t.incbin\t\"%s\"\n") % outlabel % outnam;
+    }
+    cout << "\t.word\t";
+    for(auto it = std::cbegin(labels); it != std::cend(labels); ++it) {
+      if(it != std::cbegin(labels)) {
+	cout << ", ";
+      }
+      cout << *it;
+    }
+    cout << '\n' << asmout.str() << endl;
+  } else {
+    std::ofstream output(outputname, std::ios::binary);
+    writestart(output);
+    for(auto &frame : framearr.frames) {
+      string offset = frame.name + "_offset";
+      cout << offset << " = " << output.tellp() << endl;
+      cout << frame.name << "_addr = " << basename << "_base + " << offset << endl;
+      frame.save(output);
+    }
+    cout << basename << "_end = " << output.tellp() << endl;
   }
-  cout << basename << "_end = " << output.tellp() << endl;
 }
 
 /*! main code
@@ -154,7 +183,7 @@ int main(int argc, char **argv) {
     if(args_info.start_addr_given) {
       startaddr = args_info.start_addr_arg;
     }
-    mode_binary_output(args_info.output_bin_arg, framearr, startaddr);
+    mode_binary_output(args_info.output_bin_arg, framearr, startaddr, args_info.separate_frame_given);
   } else { // default mode is animation mode
     cout << ";\twidth=" << framearr.width << ", height=" << framearr.height << std::endl;
     cout << "\t.import ANIMATIONSCREEN\n";
