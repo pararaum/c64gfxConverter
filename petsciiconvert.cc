@@ -113,7 +113,8 @@ void mode_binary_output(const char *outputname, const FrameArray &framearr, std:
       }
       cout << *it;
     }
-    cout << '\n' << asmout.str() << endl;
+    cout << "\n\t.word\t0\n";
+    cout << asmout.str() << endl;
   } else {
     std::ofstream output(outputname, std::ios::binary);
     writestart(output);
