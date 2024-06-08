@@ -13,3 +13,4 @@ modeoption "ping-pong" p "do a ping pong animation" mode="animation" flag off
 modeoption "output-bin" o "output file for the binary data" mode="binout" string
 modeoption "start-addr" s "start address of the binary data" mode="binout" long optional
 modeoption "separate-frame" - "output a file for each frame" mode="binout" optional
+modeoption "xor-previous" - "XOR the contens of a frame with the previous frame" mode="binout" optional

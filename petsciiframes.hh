@@ -61,6 +61,23 @@ public:
     //std::advance(colors.cbegin(), row * width);
     return colors .begin() + row * width;
   }
+  /*! 
+   *
+   */
+  Frame &operator^=(const Frame &other) {
+    if((width != other.width) || (height != other.height) || (chars.size() != other.chars.size()) || (colors.size() != other.colors.size())) {
+	throw std::invalid_argument("sizes differ in ^=");
+    }
+    border ^= other.border;
+    height ^= other.height;
+    border ^= other.border;
+    background ^= other.background;
+    for(std::vector<int>::size_type i = 0; i < chars.size(); ++i) {
+      chars[i] ^= other.chars[i];
+      colors[i] ^= other.colors[i];
+    }
+    return *this;
+  }
 };
 
 /*! \brief function to compare two frames
