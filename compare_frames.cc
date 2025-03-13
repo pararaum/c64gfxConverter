@@ -11,11 +11,13 @@ std::vector<std::optional<std::pair<unsigned, unsigned>>> compare_frames(const F
     unsigned right = umax;
     auto prevleft = prev.chars_row(row);
     auto nextleft = next.chars_row(row);
+    auto prevcolleft = prev.colours_row(row);
+    auto nextcolleft = next.colours_row(row);
     for(unsigned x = 0; x < WIDTH; ++x) {
-      if((left == umax) && prevleft[x] != nextleft[x]) {
+      if((left == umax) && ((prevleft[x] != nextleft[x]) || (prevcolleft[x] != nextcolleft[x]))) {
 	left = x;
       }
-      if((right == umax) && prevleft[WIDTH - x - 1] != nextleft[WIDTH - x - 1]) {
+      if((right == umax) && ((prevleft[WIDTH - x - 1] != nextleft[WIDTH - x - 1]) || (prevcolleft[WIDTH - x - 1] != nextcolleft[WIDTH - x - 1]))) {
 	right = WIDTH - x - 1;
       }
     }
