@@ -213,12 +213,16 @@ public:
     Frame deltaframe(prev);
     deltaframe ^= next; //XOR to find the changing areas.
     exports.push_back(animlabel("frame", true)); // Generate a function label for this frame.
-    for(unsigned i = 0; i < deltaframe.chars.size(); ++i) {
-      if(deltaframe.chars[i] != 0) {
-	opcode(boost::format("lda #%d") % next.chars[i])
-	  .opcode(boost::format("sta ANIMATIONSCREEN+%d") % i);
+    auto deltafun = [this](const std::vector<int> &deltaarray, const std::vector<int> &destination, const std::string &destinationname) {
+      for(unsigned i = 0; i < deltaarray.size(); ++i) {
+	if(deltaarray[i] != 0) {
+	  opcode(boost::format("lda #%d") % destination[i])
+	    .opcode(boost::format("sta %s+%d") % destinationname % i);
+	}
       }
-    }
+    };
+    deltafun(deltaframe.chars, next.chars, "ANIMATIONSCREEN");
+    deltafun(deltaframe.colors, next.colors, "$D800");
     opcode("rts");
   }
   std::ostream &write(std::ostream &out) {
