@@ -144,6 +144,88 @@ void mode_binary_output(const char *outputname, const FrameArray &framearr, std:
   }
 }
 
+
+class CodeGenerator {
+  std::ostringstream codeout;
+  std::ostringstream dataout;
+  unsigned framecounter; //!< counter for the animation
+  unsigned labelcounter;
+  std::string animation_name; //!< name to use for this animation (to generate labels)
+  const Frame &initial_frame;
+
+protected:
+  CodeGenerator &opcode(const std::string &mnemonic) {
+    codeout << '\t' << mnemonic << '\n';
+    return *this;
+  }
+  CodeGenerator &opcode(boost::format &bformat) {
+    return opcode(str(bformat));
+  }
+  std::ostream &label(const std::string &name) {
+    codeout << name << ":\n";
+    return codeout;
+  }
+  std::ostream &animlabel(const std::string &name, bool count_frame = false) {
+    std::ostringstream out;
+    out << "animation_" << animation_name << '_' << name;
+    if(count_frame) {
+      out << ++framecounter;
+    }
+    return label(out.str());
+  }
+  std::string nextlabel(void) {
+    return str(boost::format("%s_label%04X") % animation_name % labelcounter++);
+  }
+  std::ostream &outbyte(uint8_t byte) {
+    dataout << "\t.byte\t" << static_cast<int>(byte) << '\n';
+    return dataout;
+  }
+  
+public:
+  CodeGenerator(const std::string &name, const Frame &initial) :
+    framecounter(0),
+    labelcounter(0),
+    animation_name(name),
+    initial_frame(initial) {
+  }
+  void generate(const Frame &frame) {
+    animlabel("frame", true);
+  }
+  std::ostream &write(std::ostream &out) {
+    animlabel("init");
+    opcode(boost::format("lda #%d") % initial_frame.background)
+      .opcode("sta $d021");
+    opcode(boost::format("lda #%d") % initial_frame.border)
+      .opcode("sta $d020");
+    opcode("rts");
+    out << "\t.rodata\n";
+    out << dataout.str() << '\n';
+    out << "\t.code\n";
+    out << codeout.str() << '\n';
+    return out;
+  }
+};
+
+/*! Generate complete (self-contained) code for the animation
+ *
+ * \param framearr the array of frames
+ */
+void mode_generate_code(const FrameArray &framearr) {
+  unsigned frameidx;
+
+  if(framearr.size() < 2) {
+    throw std::invalid_argument("not enough frames");
+  }
+  CodeGenerator generator("petscii", framearr[0]);
+  for(frameidx = 0; frameidx < framearr.size() - 1; ++frameidx) {
+    Frame framedata(framearr[frameidx]);
+    framedata ^= framearr[frameidx + 1]; //XOR to find the changing areas.
+    generator.generate(framedata);
+  }
+  generator.write(std::cout);
+}
+
+
 /*! main code
  *
  * \param argc number of cli arguments
@@ -201,6 +283,8 @@ int main(int argc, char **argv) {
       startaddr = args_info.start_addr_arg;
     }
     mode_binary_output(args_info.output_bin_arg, framearr, startaddr, args_info.separate_frame_given, args_info.xor_previous_given);
+  } if(args_info.generate_code_given) { // generate code mode
+    mode_generate_code(framearr);
   } else { // default mode is animation mode
     cout << ";\twidth=" << framearr.width << ", height=" << framearr.height << std::endl;
     cout << "\t.import ANIMATIONSCREEN\n";

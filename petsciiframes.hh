@@ -77,15 +77,18 @@ public:
     //std::advance(colors.cbegin(), row * width);
     return colors .begin() + row * width;
   }
-  /*! 
+  /*! XOR this frame with another frame
    *
+   * Perform an xor for each cell/colour in the frame. The border and
+   * background colours are also xored.
+   *
+   * \param other The other frame from which information is taken
+   * \return reference to self
    */
   Frame &operator^=(const Frame &other) {
     if((width != other.width) || (height != other.height) || (chars.size() != other.chars.size()) || (colors.size() != other.colors.size())) {
 	throw std::invalid_argument("sizes differ in ^=");
     }
-    border ^= other.border;
-    height ^= other.height;
     border ^= other.border;
     background ^= other.background;
     for(std::vector<int>::size_type i = 0; i < chars.size(); ++i) {
