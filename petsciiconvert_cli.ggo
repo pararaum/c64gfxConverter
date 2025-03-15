@@ -17,3 +17,4 @@ modeoption "separate-frame" - "output a file for each frame" mode="binout" optio
 modeoption "xor-previous" - "XOR the contens of a frame with the previous frame" mode="binout" optional
 
 modeoption "generate-code" - "generate animation code" mode="gencode" flag off
+modeoption "generate-code-name" - "name to include in the labels for generated code" mode="gencode" string default="petscii" optional

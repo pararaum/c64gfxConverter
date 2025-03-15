@@ -268,13 +268,13 @@ public:
  *
  * \param framearr the array of frames
  */
-void mode_generate_code(const FrameArray &framearr) {
+void mode_generate_code(const FrameArray &framearr, const char *codename) {
   unsigned frameidx;
 
   if(framearr.size() < 2) {
     throw std::invalid_argument("not enough frames");
   }
-  CodeGenerator generator("petscii", framearr[0]);
+  CodeGenerator generator(codename, framearr[0]);
   for(frameidx = 0; frameidx < framearr.size() - 1; ++frameidx) {
     generator.generate(framearr[frameidx], framearr[frameidx + 1]);
   }
@@ -340,7 +340,7 @@ int main(int argc, char **argv) {
     }
     mode_binary_output(args_info.output_bin_arg, framearr, startaddr, args_info.separate_frame_given, args_info.xor_previous_given);
   } if(args_info.generate_code_given) { // generate code mode
-    mode_generate_code(framearr);
+    mode_generate_code(framearr, args_info.generate_code_name_arg);
   } else { // default mode is animation mode
     cout << ";\twidth=" << framearr.width << ", height=" << framearr.height << std::endl;
     cout << "\t.import ANIMATIONSCREEN\n";
