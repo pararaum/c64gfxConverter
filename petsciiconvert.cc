@@ -209,12 +209,13 @@ public:
     animation_name(name),
     initial_frame(initial) {
   }
-  void generate(const Frame &frame) {
-    exports.push_back(animlabel("frame", true));
-    for(unsigned i = 0; i < frame.chars.size(); ++i) {
-      if(frame.chars[i] != 0) {
-	opcode(boost::format("lda #%d") % frame.chars[i])
-	  .opcode(boost::format("eor ANIMATIONSCREEN+%d") % i)
+  void generate(const Frame &prev, const Frame &next) {
+    Frame deltaframe(prev);
+    deltaframe ^= next; //XOR to find the changing areas.
+    exports.push_back(animlabel("frame", true)); // Generate a function label for this frame.
+    for(unsigned i = 0; i < deltaframe.chars.size(); ++i) {
+      if(deltaframe.chars[i] != 0) {
+	opcode(boost::format("lda #%d") % next.chars[i])
 	  .opcode(boost::format("sta ANIMATIONSCREEN+%d") % i);
       }
     }
@@ -268,9 +269,7 @@ void mode_generate_code(const FrameArray &framearr) {
   }
   CodeGenerator generator("petscii", framearr[0]);
   for(frameidx = 0; frameidx < framearr.size() - 1; ++frameidx) {
-    Frame framedata(framearr[frameidx]);
-    framedata ^= framearr[frameidx + 1]; //XOR to find the changing areas.
-    generator.generate(framedata);
+    generator.generate(framearr[frameidx], framearr[frameidx + 1]);
   }
   generator.write(std::cout);
 }
