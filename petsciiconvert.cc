@@ -221,6 +221,14 @@ public:
 	}
       }
     };
+    if(deltaframe.background != 0) {
+      opcode(boost::format("lda #%d") % next.background)
+	.opcode("sta $d021");
+    }
+    if(deltaframe.border != 0) {
+      opcode(boost::format("lda #%d") % next.border)
+      .opcode("sta $d020");
+    }
     deltafun(deltaframe.chars, next.chars, "ANIMATIONSCREEN");
     deltafun(deltaframe.colors, next.colors, "$D800");
     opcode("rts");
