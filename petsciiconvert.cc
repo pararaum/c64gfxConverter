@@ -152,6 +152,7 @@ class CodeGenerator {
   unsigned labelcounter;
   std::string animation_name; //!< name to use for this animation (to generate labels)
   const Frame &initial_frame;
+  std::vector<std::string> exports; //!< list of labels to be exported
 
 protected:
   CodeGenerator &opcode(const std::string &mnemonic) {
@@ -165,20 +166,40 @@ protected:
     codeout << name << ":\n";
     return codeout;
   }
-  std::ostream &animlabel(const std::string &name, bool count_frame = false) {
+  std::string animlabel(const std::string &name, bool count_frame = false) {
     std::ostringstream out;
     out << "animation_" << animation_name << '_' << name;
     if(count_frame) {
       out << ++framecounter;
     }
-    return label(out.str());
+    auto ret(out.str());
+    label(ret);
+    return ret;
   }
-  std::string nextlabel(void) {
-    return str(boost::format("%s_label%04X") % animation_name % labelcounter++);
+  std::string nextlabel(bool codelabel) {
+    auto label = str(boost::format("%s_label%04X") % animation_name % labelcounter++);
+    if(codelabel) {
+      codeout << '\n' << label << ":\n";
+    } else {
+      dataout << '\n' <<  label << ":\n";
+    }
+    return label;
   }
-  std::ostream &outbyte(uint8_t byte) {
-    dataout << "\t.byte\t" << static_cast<int>(byte) << '\n';
+  std::ostream &outbyte(int byte) {
+    dataout << "\t.byte\t" << byte << '\n';
     return dataout;
+  }
+  unsigned long outbytes(const std::vector<int> bytes) {
+    unsigned long count = 0;
+    for(auto i : bytes) {
+      if(count++ % 128 == 0) {
+	dataout << "\n\t.byte\t" << i;
+      } else {
+	dataout << ", " << i;
+      }
+    }
+    dataout << '\n';
+    return count;
   }
   
 public:
@@ -189,15 +210,44 @@ public:
     initial_frame(initial) {
   }
   void generate(const Frame &frame) {
-    animlabel("frame", true);
+    exports.push_back(animlabel("frame", true));
+    for(unsigned i = 0; i < frame.chars.size(); ++i) {
+      if(frame.chars[i] != 0) {
+	opcode(boost::format("lda #%d") % frame.chars[i])
+	  .opcode(boost::format("eor ANIMATIONSCREEN+%d") % i)
+	  .opcode(boost::format("sta ANIMATIONSCREEN+%d") % i);
+      }
+    }
+    opcode("rts");
   }
   std::ostream &write(std::ostream &out) {
-    animlabel("init");
+    exports.push_back(animlabel("init"));
+    auto framecharlabel(nextlabel(false));
+    outbytes(initial_frame.chars);
+    auto framecollabel(nextlabel(false));
+    outbytes(initial_frame.colors);
     opcode(boost::format("lda #%d") % initial_frame.background)
       .opcode("sta $d021");
     opcode(boost::format("lda #%d") % initial_frame.border)
       .opcode("sta $d020");
+    auto looplabel(nextlabel(true));
+    codeout << boost::format(R"(	ldx #0
+	.repeat 4,I
+	 lda %s+I*250,x
+	 sta ANIMATIONSCREEN+I*250,x
+	 lda %s+I*250,x
+	 sta $D800+I*250,x
+	.endrepeat
+	inx
+	cpx #250
+	bne %s
+)") % framecharlabel % framecollabel % looplabel ;
     opcode("rts");
+    // Now write:
+    out << "\t.import\tANIMATIONSCREEN\n";
+    for(auto label : exports) {
+      out << "\t.export\t" << label << '\n';
+    }
     out << "\t.rodata\n";
     out << dataout.str() << '\n';
     out << "\t.code\n";
