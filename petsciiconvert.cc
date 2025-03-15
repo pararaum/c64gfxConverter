@@ -247,6 +247,9 @@ public:
 	cpx #250
 	bne %s
 )") % framecharlabel % framecollabel % looplabel ;
+    // And return the number of frames.
+    opcode(boost::format("lda #%d ; Number of frames, LO.") % (framecounter & 0xFF))
+      .opcode(boost::format("ldx #%d ; Number of frames, HI.") % ((framecounter >> 8) & 0xFF));
     opcode("rts");
     // Now write:
     out << "\t.import\tANIMATIONSCREEN\n";
