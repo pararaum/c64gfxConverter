@@ -2,6 +2,7 @@
 #include <sstream>
 #include <fstream>
 #include <string>
+#include <variant>
 #include <cassert>
 #include <boost/format.hpp>
 #include "petsciiframes.hh"
@@ -201,6 +202,46 @@ protected:
     dataout << '\n';
     return count;
   }
+
+  typedef std::variant<unsigned int,std::pair<unsigned int,unsigned int>> CellRanges;
+  /*! Get ranges of deltas
+   *
+   * This is a vector of of cells or ranges of cells which need to be
+   * changed.
+   *
+   * The variant contains eicher an int (for a single cell position)
+   * or a list of ranges (pairs).
+   * 
+   */
+  std::vector<CellRanges> get_delta_ranges(const std::vector<int> &deltaarray) {
+    std::vector<CellRanges> ret;
+    // First fill the vector with single cells if they have changed.
+    for(unsigned i = 0; i < deltaarray.size(); ++i) {
+      if(deltaarray[i] != 0) {
+	unsigned j = i + 1; // Advance to the next cell.
+	if(j < deltaarray.size()) { // Are we still within the bounds?
+	  /*
+	   * If we are still with in the bounds of the array check if
+	   * the cell is a changed cell, if so advance to the next
+	   * cell.
+	   */
+	  while((j < deltaarray.size()) && (deltaarray[j] != 0)) {
+	    ++j;
+	  }
+	  --j; // Step back, as we overstepped.
+	  if(i == j) { // Only a single cell?
+	    ret.push_back(CellRanges(i));
+	  } else {
+	    ret.push_back(CellRanges(std::make_pair(i, j)));
+	    i = j; // Move the index to the end cell.
+	  }
+	} else { // Not within the bounds, therefore only one cell.
+	  ret.push_back(CellRanges(i));
+	}
+      }
+    }
+    return ret;
+  }
   
 public:
   CodeGenerator(const std::string &name, const Frame &initial) :
@@ -221,6 +262,24 @@ public:
 	}
       }
     };
+    //
+    auto deltaranges = get_delta_ranges(deltaframe.chars);
+    for(auto x : deltaranges) {
+      switch(x.index()) {
+      case 0:
+	std::cerr << std::get<unsigned>(x) << std::endl;
+	break;
+      case 1:
+	{
+	  auto pair = std::get<std::pair<unsigned, unsigned>>(x);
+	  std::cerr << pair.first << " ... " << pair.second << std::endl;
+	}
+	break;
+      default:
+	throw std::logic_error("deltaranges variant index out of bounds");
+      }
+    }
+    //
     if(deltaframe.background != 0) {
       opcode(boost::format("lda #%d") % next.background)
 	.opcode("sta $d021");
