@@ -296,7 +296,7 @@ public:
     deltaframe ^= next; //XOR to find the changing areas.
     auto nextanimlabel = animlabel("frame", true);
     exports.push_back(nextanimlabel); // Generate a function label for this frame.
-    std::cerr << "Generating frame: " << nextanimlabel << std::endl;
+    std::cerr << "\t.import \t" << nextanimlabel << std::endl;
     if(deltaframe.background != 0) {
       opcode(boost::format("lda #%d") % next.background)
 	.opcode("sta $d021");
@@ -310,7 +310,9 @@ public:
     opcode("rts");
   }
   std::ostream &write(std::ostream &out) {
-    exports.push_back(animlabel("init"));
+    auto nextanimlabel = animlabel("init");
+    exports.push_back(nextanimlabel);
+    std::cerr << "\t.import \t" << nextanimlabel << std::endl;
     auto framecharlabel(nextlabel(false));
     outbytes(initial_frame.chars);
     auto framecollabel(nextlabel(false));
@@ -319,9 +321,9 @@ public:
       .opcode("sta $d021");
     opcode(boost::format("lda #%d") % initial_frame.border)
       .opcode("sta $d020");
+    opcode("ldx #0");
     auto looplabel(nextlabel(true));
-    codeout << boost::format(R"(	ldx #0
-	.repeat 4,I
+    codeout << boost::format(R"(.repeat 4,I
 	 lda %s+I*250,x
 	 sta ANIMATIONSCREEN+I*250,x
 	 lda %s+I*250,x
@@ -391,7 +393,7 @@ int main(int argc, char **argv) {
     }
     in = &infile;
   }
-  cerr << "Parsing..." << std::flush;
+  cerr << ";\tParsing..." << std::flush;
   // Parse!
   try {
     framearr = parse_file(*in);
