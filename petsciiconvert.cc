@@ -219,25 +219,16 @@ protected:
     for(unsigned i = 0; i < deltaarray.size(); ++i) {
       if(deltaarray[i] != 0) {
 	unsigned j = i + 1; // Advance to the next cell.
-	if(j < deltaarray.size()) { // Are we still within the bounds?
-	  /*
-	   * If we are still with in the bounds of the array check if
-	   * the cell is a changed cell, if so advance to the next
-	   * cell.
-	   */
-	  while((j < deltaarray.size()) && (deltaarray[j] != 0)) {
-	    ++j;
-	  }
-	  --j; // Step back, as we overstepped.
-	  if(i == j) { // Only a single cell?
-	    ret.push_back(CellRanges(std::make_pair(i, i)));
-	  } else {
-	    ret.push_back(CellRanges(std::make_pair(i, j)));
-	    i = j; // Move the index to the end cell.
-	  }
-	} else { // Not within the bounds, therefore only one cell.
-	  ret.push_back(CellRanges(std::make_pair(i, i)));
+	/*
+	 * If we are still with in the bounds of the array check if
+	 * the cell is a changed cell, if so advance to the next cell.
+	 */
+	while((j < deltaarray.size()) && (deltaarray[j] != 0)) {
+	  ++j;
 	}
+	--j; // Step back, as we overstepped.
+	ret.push_back(CellRanges(std::make_pair(i, j)));
+	i = j; // Move the index to the end cell.
       }
     }
     return ret;
@@ -264,7 +255,8 @@ public:
 	  opcode(boost::format("lda #%d") % destination[first])
 	    .opcode(boost::format("sta %s+%d") % destinationname % first);
 	} else { // Multiple consecutive cells.
-	  opcode(boost::format("ldx #%d") % (last - first + 1)); // Number of elements in X.
+	  // Number of elements in X.
+	  opcode(boost::format("ldx #%d") % (last - first + 1));
 	  auto codelabel = nextlabel(true);
 	  auto nextit = iter;
 	  for(; nextit != end; ++nextit) { // Loop to find similar lengths.
@@ -278,7 +270,7 @@ public:
 	      for(unsigned i = first; i <= last; ++i) {
 		outbyte(destination.at(i));
 	      }
-	      opcode(boost::format("lda %s-1+%d,x") % datalabel % first);
+	      opcode(boost::format("lda %s-1,x") % datalabel);
 	      opcode(boost::format("sta %s-1+%d,x") % destinationname % first);
 	    } else {
 	      break; // Leave the search for matching lines.
