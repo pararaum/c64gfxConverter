@@ -2,7 +2,7 @@
 #include <sstream>
 #include <fstream>
 #include <string>
-#include <variant>
+#include <deque>
 #include <cassert>
 #include <boost/format.hpp>
 #include "petsciiframes.hh"
@@ -153,7 +153,7 @@ class CodeGenerator {
   unsigned labelcounter;
   std::string animation_name; //!< name to use for this animation (to generate labels)
   const Frame &initial_frame;
-  std::vector<std::string> exports; //!< list of labels to be exported
+  std::deque<std::string> exports; //!< list of labels to be exported
 
 protected:
   CodeGenerator &opcode(const std::string &mnemonic) {
@@ -167,9 +167,15 @@ protected:
     codeout << name << ":\n";
     return codeout;
   }
-  std::string animlabel(const std::string &name, bool count_frame = false) {
+  std::string animlabelname(const std::string &name) {
     std::ostringstream out;
     out << "animation_" << animation_name << '_' << name;
+    auto ret(out.str());
+    return ret;
+  }
+  std::string animlabel(const std::string &name, bool count_frame = false) {
+    std::ostringstream out;
+    out << animlabelname(name);
     if(count_frame) {
       out << ++framecounter;
     }
@@ -235,11 +241,14 @@ protected:
   }
   
 public:
-  CodeGenerator(const std::string &name, const Frame &initial) :
+  bool generate_jumptable; //!< set to true if jump table should be generated.
+
+  CodeGenerator(const std::string &name, const Frame &initial, bool genjumptab) :
     framecounter(0),
     labelcounter(0),
     animation_name(name),
-    initial_frame(initial) {
+    initial_frame(initial),
+    generate_jumptable(genjumptab) {
   }
   void generate(const Frame &prev, const Frame &next) {
     Frame deltaframe(prev);
@@ -303,7 +312,7 @@ public:
   }
   std::ostream &write(std::ostream &out) {
     auto nextanimlabel = animlabel("init");
-    exports.push_back(nextanimlabel);
+    exports.push_front(nextanimlabel);
     std::cerr << "\t.import \t" << nextanimlabel << std::endl;
     auto framecharlabel(nextlabel(false));
     outbytes(initial_frame.chars);
@@ -331,12 +340,20 @@ public:
     opcode("rts");
     // Now write:
     out << "\t.import\tANIMATIONSCREEN\n";
-    for(auto label : exports) {
-      out << "\t.export\t" << label << '\n';
-    }
     out << "\t.rodata\n";
     out << dataout.str() << '\n';
     out << "\t.code\n";
+    if(generate_jumptable) {
+      auto tablelabel = animlabelname("jumptable");
+      out << tablelabel << ":\n";
+      for(auto lab : exports) {
+	out << "\tjmp\t" << lab << std::endl;
+      }
+      exports.push_back(tablelabel);
+    }
+    for(auto label : exports) {
+      out << "\t.export\t" << label << '\n';
+    }
     out << codeout.str() << '\n';
     return out;
   }
@@ -346,13 +363,13 @@ public:
  *
  * \param framearr the array of frames
  */
-void mode_generate_code(const FrameArray &framearr, const char *codename) {
+void mode_generate_code(const FrameArray &framearr, const char *codename, bool jumptable) {
   unsigned frameidx;
 
   if(framearr.size() < 2) {
     throw std::invalid_argument("not enough frames");
   }
-  CodeGenerator generator(codename, framearr[0]);
+  CodeGenerator generator(codename, framearr[0], jumptable);
   for(frameidx = 0; frameidx < framearr.size() - 1; ++frameidx) {
     generator.generate(framearr[frameidx], framearr[frameidx + 1]);
   }
@@ -418,7 +435,7 @@ int main(int argc, char **argv) {
     }
     mode_binary_output(args_info.output_bin_arg, framearr, startaddr, args_info.separate_frame_given, args_info.xor_previous_given);
   } if(args_info.generate_code_given) { // generate code mode
-    mode_generate_code(framearr, args_info.generate_code_name_arg);
+    mode_generate_code(framearr, args_info.generate_code_name_arg, args_info.generate_jumptable_flag);
   } else { // default mode is animation mode
     cout << ";\twidth=" << framearr.width << ", height=" << framearr.height << std::endl;
     cout << "\t.import ANIMATIONSCREEN\n";

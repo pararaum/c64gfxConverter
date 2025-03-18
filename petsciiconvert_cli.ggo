@@ -18,3 +18,4 @@ modeoption "xor-previous" - "XOR the contens of a frame with the previous frame"
 
 modeoption "generate-code" - "generate animation code" mode="gencode" flag off
 modeoption "generate-code-name" - "name to include in the labels for generated code" mode="gencode" string default="petscii" optional
+modeoption "generate-jumptable" - "generate a jumptable for easier binary inclusion" mode="gencode" flag off
