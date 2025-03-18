@@ -203,15 +203,15 @@ protected:
     return count;
   }
 
-  typedef std::variant<unsigned int,std::pair<unsigned int,unsigned int>> CellRanges;
+  typedef std::pair<unsigned int,unsigned int> CellRanges;
   /*! Get ranges of deltas
    *
    * This is a vector of of cells or ranges of cells which need to be
-   * changed.
-   *
-   * The variant contains eicher an int (for a single cell position)
-   * or a list of ranges (pairs).
+   * changed. The range is inclusive thus a single cell has identical
+   * value for the pair elements.
    * 
+   * \param deltaarray the XORed two frames (zero = no change)
+   * \return an array of changes
    */
   std::vector<CellRanges> get_delta_ranges(const std::vector<int> &deltaarray) {
     std::vector<CellRanges> ret;
@@ -230,13 +230,13 @@ protected:
 	  }
 	  --j; // Step back, as we overstepped.
 	  if(i == j) { // Only a single cell?
-	    ret.push_back(CellRanges(i));
+	    ret.push_back(CellRanges(std::make_pair(i, i)));
 	  } else {
 	    ret.push_back(CellRanges(std::make_pair(i, j)));
 	    i = j; // Move the index to the end cell.
 	  }
 	} else { // Not within the bounds, therefore only one cell.
-	  ret.push_back(CellRanges(i));
+	  ret.push_back(CellRanges(std::make_pair(i, i)));
 	}
       }
     }
@@ -252,34 +252,51 @@ public:
   }
   void generate(const Frame &prev, const Frame &next) {
     Frame deltaframe(prev);
-    deltaframe ^= next; //XOR to find the changing areas.
-    exports.push_back(animlabel("frame", true)); // Generate a function label for this frame.
-    auto deltafun = [this](const std::vector<int> &deltaarray, const std::vector<int> &destination, const std::string &destinationname) {
-      for(unsigned i = 0; i < deltaarray.size(); ++i) {
-	if(deltaarray[i] != 0) {
-	  opcode(boost::format("lda #%d") % destination[i])
-	    .opcode(boost::format("sta %s+%d") % destinationname % i);
+    auto deltafun = [this](const std::vector<int> &xored, const std::vector<int> &destination, const std::string &destinationname) {
+      const std::vector<CellRanges> deltaarray = get_delta_ranges(xored);
+      auto iter = deltaarray.begin(); // Iterator to the current element in the delta (changes) array.
+      auto end = deltaarray.end();
+      while(iter != end) {
+	auto [first, last] = *iter;
+	//std::cerr << std::distance(iter, end) << "~~~~~~~~~~~~~~~~~~~~~~ " << first << "\t" << last << std::endl;
+	if(first == last) {
+	  // Only a single cell was changed.
+	  opcode(boost::format("lda #%d") % destination[first])
+	    .opcode(boost::format("sta %s+%d") % destinationname % first);
+	} else { // Multiple consecutive cells.
+	  opcode(boost::format("ldx #%d") % (last - first + 1)); // Number of elements in X.
+	  auto codelabel = nextlabel(true);
+	  auto nextit = iter;
+	  for(; nextit != end; ++nextit) { // Loop to find similar lengths.
+	    // In the first loop iteration, they are equal, of course!
+	    auto [nextfirst, nextlast] = *nextit;
+	    //std::cerr << "N: " << nextfirst << "\t" << nextlast << std::endl;
+	    if((first == nextfirst) || (last == nextlast)) {
+	      // Equal, so output this line!
+	      //std::cerr << boost::format("first=%d, last=%d, nextfirst=%d, nextlast=%d\n") % first % last % nextfirst % nextlast;
+	      auto datalabel = nextlabel(false);
+	      for(unsigned i = first; i <= last; ++i) {
+		outbyte(destination.at(i));
+	      }
+	      opcode(boost::format("lda %s-1+%d,x") % datalabel % first);
+	      opcode(boost::format("sta %s-1+%d,x") % destinationname % first);
+	    } else {
+	      break; // Leave the search for matching lines.
+	    }
+	  }
+	  opcode("dex");
+	  opcode(boost::format("bne %s") % codelabel);
+	  iter = nextit; // Move iterator pass the similar length lines.
+	  continue; // In order to avoid the iteration incrementation below.
 	}
+	++iter;
       }
     };
     //
-    auto deltaranges = get_delta_ranges(deltaframe.chars);
-    for(auto x : deltaranges) {
-      switch(x.index()) {
-      case 0:
-	std::cerr << std::get<unsigned>(x) << std::endl;
-	break;
-      case 1:
-	{
-	  auto pair = std::get<std::pair<unsigned, unsigned>>(x);
-	  std::cerr << pair.first << " ... " << pair.second << std::endl;
-	}
-	break;
-      default:
-	throw std::logic_error("deltaranges variant index out of bounds");
-      }
-    }
-    //
+    deltaframe ^= next; //XOR to find the changing areas.
+    auto nextanimlabel = animlabel("frame", true);
+    exports.push_back(nextanimlabel); // Generate a function label for this frame.
+    std::cerr << "Generating frame: " << nextanimlabel << std::endl;
     if(deltaframe.background != 0) {
       opcode(boost::format("lda #%d") % next.background)
 	.opcode("sta $d021");
