@@ -338,8 +338,8 @@ public:
     opcode(boost::format("lda #%d ; Number of frames, LO.") % (framecounter & 0xFF))
       .opcode(boost::format("ldx #%d ; Number of frames, HI.") % ((framecounter >> 8) & 0xFF));
     opcode("rts");
-    // Now write:
-    out << "\t.import\tANIMATIONSCREEN\n";
+    // Now write (global is used so that `cl65` works with --asm-define):
+    out << "\t.global\tANIMATIONSCREEN\n";
     out << "\t.rodata\n";
     out << dataout.str() << '\n';
     out << "\t.code\n";
