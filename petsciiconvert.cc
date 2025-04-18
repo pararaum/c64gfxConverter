@@ -2,6 +2,7 @@
 #include <sstream>
 #include <fstream>
 #include <string>
+#include <deque>
 #include <cassert>
 #include <boost/format.hpp>
 #include "petsciiframes.hh"
@@ -73,8 +74,9 @@ loop%u:	  lda	%s+2+%u*40+%u,x
  * \param framearr frames to convert
  * \param startaddr optionally write this start address to the output file
  * \param singfram single frame option
+ * \param xorp xor with previous frame if true
  */
-void mode_binary_output(const char *outputname, const FrameArray &framearr, std::optional<unsigned short> startaddr, bool singfram) {
+void mode_binary_output(const char *outputname, const FrameArray &framearr, std::optional<unsigned short> startaddr, bool singfram, bool xorp) {
   string basename(outputname);
   /* Write startaddr if given */
   auto writestart = [startaddr](std::ostream &out) {
@@ -103,7 +105,19 @@ void mode_binary_output(const char *outputname, const FrameArray &framearr, std:
       labels.push_back(outlabel);
       cerr << "Writing frame " << frame << endl;
       std::ofstream output(outnam, std::ios::binary);
-      framearr[frame].save(output);
+      if(xorp) {
+	unsigned previousidx;
+	if(frame == 0) {
+	  previousidx = framearr.size() - 1;
+	} else {
+	  previousidx = frame - 1;
+	}
+	Frame previous(framearr[frame]);
+	previous ^= framearr[previousidx];
+	previous.save(output);
+      } else {
+	framearr[frame].save(output);
+      }
       asmout << boost::format("%s:\n\t.incbin\t\"%s\"\n") % outlabel % outnam;
     }
     cout << "\t.word\t";
@@ -118,6 +132,9 @@ void mode_binary_output(const char *outputname, const FrameArray &framearr, std:
   } else {
     std::ofstream output(outputname, std::ios::binary);
     writestart(output);
+    if(xorp) {
+      throw std::invalid_argument("xorp not yet implemented");
+    }
     for(auto &frame : framearr.frames) {
       string offset = frame.name + "_offset";
       cout << offset << " = " << output.tellp() << endl;
@@ -127,6 +144,244 @@ void mode_binary_output(const char *outputname, const FrameArray &framearr, std:
     cout << basename << "_end = " << output.tellp() << endl;
   }
 }
+
+
+class CodeGenerator {
+  std::ostringstream codeout;
+  std::ostringstream dataout;
+  unsigned framecounter; //!< counter for the animation
+  unsigned labelcounter;
+  std::string animation_name; //!< name to use for this animation (to generate labels)
+  const Frame &initial_frame;
+  std::deque<std::string> exports; //!< list of labels to be exported
+
+protected:
+  CodeGenerator &opcode(const std::string &mnemonic) {
+    codeout << '\t' << mnemonic << '\n';
+    return *this;
+  }
+  CodeGenerator &opcode(boost::format &bformat) {
+    return opcode(str(bformat));
+  }
+  std::ostream &label(const std::string &name) {
+    codeout << name << ":\n";
+    return codeout;
+  }
+  std::string animlabelname(const std::string &name) {
+    std::ostringstream out;
+    out << "animation_" << animation_name << '_' << name;
+    auto ret(out.str());
+    return ret;
+  }
+  std::string animlabel(const std::string &name, bool count_frame = false) {
+    std::ostringstream out;
+    out << animlabelname(name);
+    if(count_frame) {
+      out << ++framecounter;
+    }
+    auto ret(out.str());
+    label(ret);
+    return ret;
+  }
+  std::string nextlabel(bool codelabel) {
+    auto label = str(boost::format("%s_label%04X") % animation_name % labelcounter++);
+    if(codelabel) {
+      codeout << '\n' << label << ":\n";
+    } else {
+      dataout << '\n' <<  label << ":\n";
+    }
+    return label;
+  }
+  std::ostream &outbyte(int byte) {
+    dataout << "\t.byte\t" << byte << '\n';
+    return dataout;
+  }
+  unsigned long outbytes(const std::vector<int> bytes) {
+    unsigned long count = 0;
+    for(auto i : bytes) {
+      if(count++ % 128 == 0) {
+	dataout << "\n\t.byte\t" << i;
+      } else {
+	dataout << ", " << i;
+      }
+    }
+    dataout << '\n';
+    return count;
+  }
+
+  typedef std::pair<unsigned int,unsigned int> CellRanges;
+  /*! Get ranges of deltas
+   *
+   * This is a vector of of cells or ranges of cells which need to be
+   * changed. The range is inclusive thus a single cell has identical
+   * value for the pair elements.
+   * 
+   * \param deltaarray the XORed two frames (zero = no change)
+   * \return an array of changes
+   */
+  std::vector<CellRanges> get_delta_ranges(const std::vector<int> &deltaarray) {
+    std::vector<CellRanges> ret;
+    // First fill the vector with single cells if they have changed.
+    for(unsigned i = 0; i < deltaarray.size(); ++i) {
+      if(deltaarray[i] != 0) {
+	unsigned j = i + 1; // Advance to the next cell.
+	/*
+	 * If we are still with in the bounds of the array check if
+	 * the cell is a changed cell, if so advance to the next cell.
+	 */
+	while((j < deltaarray.size()) && (deltaarray[j] != 0)) {
+	  ++j;
+	}
+	--j; // Step back, as we overstepped.
+	ret.push_back(CellRanges(std::make_pair(i, j)));
+	i = j; // Move the index to the end cell.
+      }
+    }
+    return ret;
+  }
+  
+public:
+  bool generate_jumptable; //!< set to true if jump table should be generated.
+
+  CodeGenerator(const std::string &name, const Frame &initial, bool genjumptab) :
+    framecounter(0),
+    labelcounter(0),
+    animation_name(name),
+    initial_frame(initial),
+    generate_jumptable(genjumptab) {
+  }
+  void generate(const Frame &prev, const Frame &next) {
+    Frame deltaframe(prev);
+    auto deltafun = [this](const std::vector<int> &xored, const std::vector<int> &destination, const std::string &destinationname) {
+      const std::vector<CellRanges> deltaarray = get_delta_ranges(xored);
+      auto iter = deltaarray.begin(); // Iterator to the current element in the delta (changes) array.
+      auto end = deltaarray.end();
+      int last_A_value = -1; // Last value of accumulator which was written into memory, -1 if unknown. This can be used to reduce the number of times the accumulator is loaded when the last value is known.
+      while(iter != end) {
+	auto [first, last] = *iter;
+	//std::cerr << std::distance(iter, end) << "~~~~~~~~~~~~~~~~~~~~~~ " << first << "\t" << last << std::endl;
+	if(first == last) {
+	  // Only a single cell was changed.
+	  int new_A = destination[first];
+	  if(last_A_value != new_A) {
+	    opcode(boost::format("lda #%d") % new_A);
+	  }
+	  opcode(boost::format("sta %s+%d") % destinationname % first);
+	  last_A_value = new_A;
+	} else { // Multiple consecutive cells.
+	  // Number of elements in X.
+	  opcode(boost::format("ldx #%d") % (last - first + 1));
+	  auto codelabel = nextlabel(true);
+	  auto nextit = iter;
+	  for(; nextit != end; ++nextit) { // Loop to find similar lengths.
+	    // In the first loop iteration, they are equal, of course!
+	    auto [nextfirst, nextlast] = *nextit;
+	    //std::cerr << "N: " << nextfirst << "\t" << nextlast << std::endl;
+	    if((first == nextfirst) || (last == nextlast)) {
+	      // Equal, so output this line!
+	      //std::cerr << boost::format("first=%d, last=%d, nextfirst=%d, nextlast=%d\n") % first % last % nextfirst % nextlast;
+	      auto datalabel = nextlabel(false);
+	      for(unsigned i = first; i <= last; ++i) {
+		outbyte(destination.at(i));
+	      }
+	      opcode(boost::format("lda %s-1,x") % datalabel);
+	      opcode(boost::format("sta %s-1+%d,x") % destinationname % first);
+	    } else {
+	      break; // Leave the search for matching lines.
+	    }
+	  }
+	  opcode("dex");
+	  opcode(boost::format("bne %s") % codelabel);
+	  iter = nextit; // Move iterator pass the similar length lines.
+	  last_A_value = -1; // Value is unknown.
+	  continue; // In order to avoid the iteration incrementation below.
+	}
+	++iter;
+      }
+    };
+    //
+    deltaframe ^= next; //XOR to find the changing areas.
+    auto nextanimlabel = animlabel("frame", true);
+    exports.push_back(nextanimlabel); // Generate a function label for this frame.
+    std::cerr << "\t.import \t" << nextanimlabel << std::endl;
+    if(deltaframe.background != 0) {
+      opcode(boost::format("lda #%d") % next.background)
+	.opcode("sta $d021");
+    }
+    if(deltaframe.border != 0) {
+      opcode(boost::format("lda #%d") % next.border)
+      .opcode("sta $d020");
+    }
+    deltafun(deltaframe.chars, next.chars, "ANIMATIONSCREEN");
+    deltafun(deltaframe.colors, next.colors, "$D800");
+    opcode("rts");
+  }
+  std::ostream &write(std::ostream &out) {
+    auto nextanimlabel = animlabel("init");
+    exports.push_front(nextanimlabel);
+    std::cerr << "\t.import \t" << nextanimlabel << std::endl;
+    auto framecharlabel(nextlabel(false));
+    outbytes(initial_frame.chars);
+    auto framecollabel(nextlabel(false));
+    outbytes(initial_frame.colors);
+    opcode(boost::format("lda #%d") % initial_frame.background)
+      .opcode("sta $d021");
+    opcode(boost::format("lda #%d") % initial_frame.border)
+      .opcode("sta $d020");
+    opcode("ldx #0");
+    auto looplabel(nextlabel(true));
+    codeout << boost::format(R"(.repeat 4,I
+	 lda %s+I*250,x
+	 sta ANIMATIONSCREEN+I*250,x
+	 lda %s+I*250,x
+	 sta $D800+I*250,x
+	.endrepeat
+	inx
+	cpx #250
+	bne %s
+)") % framecharlabel % framecollabel % looplabel ;
+    // And return the number of frames.
+    opcode(boost::format("lda #%d ; Number of frames, LO.") % (framecounter & 0xFF))
+      .opcode(boost::format("ldx #%d ; Number of frames, HI.") % ((framecounter >> 8) & 0xFF));
+    opcode("rts");
+    // Now write (global is used so that `cl65` works with --asm-define):
+    out << "\t.global\tANIMATIONSCREEN\n";
+    out << "\t.rodata\n";
+    out << dataout.str() << '\n';
+    out << "\t.code\n";
+    if(generate_jumptable) {
+      auto tablelabel = animlabelname("jumptable");
+      out << tablelabel << ":\n";
+      for(auto lab : exports) {
+	out << "\tjmp\t" << lab << std::endl;
+      }
+      exports.push_back(tablelabel);
+    }
+    for(auto label : exports) {
+      out << "\t.export\t" << label << '\n';
+    }
+    out << codeout.str() << '\n';
+    return out;
+  }
+};
+
+/*! Generate complete (self-contained) code for the animation
+ *
+ * \param framearr the array of frames
+ */
+void mode_generate_code(const FrameArray &framearr, const char *codename, bool jumptable) {
+  unsigned frameidx;
+
+  if(framearr.size() < 2) {
+    throw std::invalid_argument("not enough frames");
+  }
+  CodeGenerator generator(codename, framearr[0], jumptable);
+  for(frameidx = 0; frameidx < framearr.size() - 1; ++frameidx) {
+    generator.generate(framearr[frameidx], framearr[frameidx + 1]);
+  }
+  generator.write(std::cout);
+}
+
 
 /*! main code
  *
@@ -153,7 +408,7 @@ int main(int argc, char **argv) {
     }
     in = &infile;
   }
-  cerr << "Parsing..." << std::flush;
+  cerr << ";\tParsing..." << std::flush;
   // Parse!
   try {
     framearr = parse_file(*in);
@@ -184,7 +439,9 @@ int main(int argc, char **argv) {
     if(args_info.start_addr_given) {
       startaddr = args_info.start_addr_arg;
     }
-    mode_binary_output(args_info.output_bin_arg, framearr, startaddr, args_info.separate_frame_given);
+    mode_binary_output(args_info.output_bin_arg, framearr, startaddr, args_info.separate_frame_given, args_info.xor_previous_given);
+  } if(args_info.generate_code_given) { // generate code mode
+    mode_generate_code(framearr, args_info.generate_code_name_arg, args_info.generate_jumptable_flag);
   } else { // default mode is animation mode
     cout << ";\twidth=" << framearr.width << ", height=" << framearr.height << std::endl;
     cout << "\t.import ANIMATIONSCREEN\n";

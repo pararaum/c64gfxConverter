@@ -53,13 +53,49 @@ public:
     }
     return out;
   }
+  /*! Get a character row
+   *
+   * Get an iterator to a row of characters in the frame.
+   * \param row row number (0..rows-1)
+   */
   std::vector<int>::const_iterator chars_row(unsigned row) const {
+    if(row >= height) {
+      throw std::runtime_error("row >= height");
+    }
     //std::advance(chars.cbegin(), row * width);
     return chars.begin() + row * width;
   }
-  std::vector<int>::const_iterator colors_row(unsigned row) const {
+  /*! Get a colour row
+   *
+   * Get an iterator to a row of colours in the frame.
+   * \param row row number (0..rows-1)
+   */
+  std::vector<int>::const_iterator colours_row(unsigned row) const {
+    if(row >= height) {
+      throw std::runtime_error("row >= height");
+    }
     //std::advance(colors.cbegin(), row * width);
     return colors .begin() + row * width;
+  }
+  /*! XOR this frame with another frame
+   *
+   * Perform an xor for each cell/colour in the frame. The border and
+   * background colours are also xored.
+   *
+   * \param other The other frame from which information is taken
+   * \return reference to self
+   */
+  Frame &operator^=(const Frame &other) {
+    if((width != other.width) || (height != other.height) || (chars.size() != other.chars.size()) || (colors.size() != other.colors.size())) {
+	throw std::invalid_argument("sizes differ in ^=");
+    }
+    border ^= other.border;
+    background ^= other.background;
+    for(std::vector<int>::size_type i = 0; i < chars.size(); ++i) {
+      chars[i] ^= other.chars[i];
+      colors[i] ^= other.colors[i];
+    }
+    return *this;
   }
 };
 
@@ -67,7 +103,8 @@ public:
  *
  * The min and max positions are inclusive so if a single character in
  * a row changed (eg the second) then both min and max will be the
- * same (eg 2 in our example).
+ * same (eg 2 in our example). Both the characters and the colour
+ * information is compared.
  * 
  * \param prev previous frame in the animation
  * \param next next frame in the animation (next > previous)
