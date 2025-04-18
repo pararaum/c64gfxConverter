@@ -256,13 +256,18 @@ public:
       const std::vector<CellRanges> deltaarray = get_delta_ranges(xored);
       auto iter = deltaarray.begin(); // Iterator to the current element in the delta (changes) array.
       auto end = deltaarray.end();
+      int last_A_value = -1; // Last value of accumulator which was written into memory, -1 if unknown. This can be used to reduce the number of times the accumulator is loaded when the last value is known.
       while(iter != end) {
 	auto [first, last] = *iter;
 	//std::cerr << std::distance(iter, end) << "~~~~~~~~~~~~~~~~~~~~~~ " << first << "\t" << last << std::endl;
 	if(first == last) {
 	  // Only a single cell was changed.
-	  opcode(boost::format("lda #%d") % destination[first])
-	    .opcode(boost::format("sta %s+%d") % destinationname % first);
+	  int new_A = destination[first];
+	  if(last_A_value != new_A) {
+	    opcode(boost::format("lda #%d") % new_A);
+	  }
+	  opcode(boost::format("sta %s+%d") % destinationname % first);
+	  last_A_value = new_A;
 	} else { // Multiple consecutive cells.
 	  // Number of elements in X.
 	  opcode(boost::format("ldx #%d") % (last - first + 1));
@@ -288,6 +293,7 @@ public:
 	  opcode("dex");
 	  opcode(boost::format("bne %s") % codelabel);
 	  iter = nextit; // Move iterator pass the similar length lines.
+	  last_A_value = -1; // Value is unknown.
 	  continue; // In order to avoid the iteration incrementation below.
 	}
 	++iter;
