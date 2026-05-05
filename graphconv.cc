@@ -75,20 +75,6 @@ void write_char_blocks(const std::list<CharBlock> &blocks, std::ostream &out, un
   std::cerr << "Col: $" << std::hex << addr + 320*200/8 << "-$" << std::hex << addr + 320*200/8 + 40*25 << '\n';
 }
 
-std::vector<double> calc_distances(Magick::PixelPacket *view, unsigned long size) {
-  std::vector<double> ret(16);
-  auto f = [&] (Magick::PixelPacket &x) {
-      for(int i = 0; i < 16; ++i) {
-      }
-  };
-
-  for(auto ptr = view; ptr < view + size; ++ptr) {
-    std::cout << ptr->green;
-  }
-  std::for_each(view, view + size, f);
-  return ret;
-}
-
 
 std::vector<double> calc_distances(const Magick::Image &img, unsigned x_, unsigned y_, unsigned width, unsigned height) {
   std::vector<double> cdists(16);
