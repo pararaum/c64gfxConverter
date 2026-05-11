@@ -1,6 +1,6 @@
 #! /usr/bin/make -f
 
-CXX = g++ -std=c++20
+CXX = g++ -std=c++23
 MAGICK = $(shell pkg-config --cflags --libs Magick++)
 CPPFLAGS = -DNDEBUG
 CXXFLAGS = -Wall -O2 -Wextra $(shell pkg-config --cflags Magick++)

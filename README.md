@@ -30,10 +30,11 @@ The following libraries must be installed:
  * libmagick++
  * SDL2
  * SDL2 image library
+ * CLI11 library
 
 On a Debian based system the following command will do:
 
-    sudo apt-get install libmagick++-dev libsdl2-image-dev libsdl2-dev
+    sudo apt-get install libmagick++-dev libsdl2-image-dev libsdl2-dev libcli11-dev
 
 If you forgot to clone the repository recursively then install and
 update the git submodules with
@@ -54,6 +55,22 @@ Call the program with an image file. Only the upper left 320 times 200
 pixels are converted.
 
     graphconv <filename>
+
+There are other command-line options:
+
+```
+graphconv – convert an image to C64 hires bitmap format
+Usage: ./graphconv [OPTIONS] file
+
+Positionals:
+  file TEXT:FILE REQUIRED     Input image file to convert
+
+Options:
+  -h,--help                   Print this help message and exit
+  --write-ilbm                Also save the quantised image as ILBM
+  --write-xpm                 Also save the quantised image as XPM
+  --display                   Display the image before and after conversion
+```
 
 ## petscii80x50 ##
 ## petsciiconvert ##
