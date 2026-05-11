@@ -408,6 +408,7 @@ int main(int argc, char **argv) {
   std::string input_file;
   bool write_ilbm = false;
   bool write_xpm  = false;
+  bool display_gfx = false;
 
   /* Positional argument: the image file to convert */
   app.add_option("file", input_file, "Input image file to convert")
@@ -417,6 +418,8 @@ int main(int argc, char **argv) {
   /* Optional output format switches */
   app.add_flag("--write-ilbm", write_ilbm, "Also save the quantised image as ILBM");
   app.add_flag("--write-xpm",  write_xpm,  "Also save the quantised image as XPM");
+  /* Optional display on screen */
+  app.add_flag("--display", display_gfx, "Display the image on your screen");
 
   CLI11_PARSE(app, argc, argv);
 
@@ -435,7 +438,9 @@ int main(int argc, char **argv) {
    * See also https://www.imagemagick.org/Magick++/Pixels.html.
    */
   img.type(Magick::TrueColorType);
-  img.display();
+  if(display_gfx) {
+    img.display();
+  }
 
   /* Run the optimal two-colour quantisation on all 8×8 blocks */
   std::list<CharBlock> blocks(handle_block_wise2(img));
@@ -452,6 +457,8 @@ int main(int argc, char **argv) {
   std::ofstream outfile(change_ending(input_file, "c64"));
   write_char_blocks(blocks, outfile);
 
-  img.display();
+  if(display_gfx) {
+    img.display();
+  }
   return 0;
 }
