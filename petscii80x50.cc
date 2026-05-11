@@ -131,6 +131,7 @@ int main(int argc, char **argv) {
   std::string input_file;
   double threshold   = DEFAULT_THRESHOLD;
   bool   display_gfx = false;
+  std::optional<unsigned short> load_address;
 
   app.add_option("file", input_file, "Input image file to convert")
      ->required()
@@ -141,6 +142,7 @@ int main(int argc, char **argv) {
      ->check(CLI::Range(0.0, 1.0));
   app.add_flag("--display,-d", display_gfx,
                "Display the thresholded image on screen before converting");
+  app.add_flag("--load-address", load_address, "prepend a load address to the output");
 
   CLI11_PARSE(app, argc, argv);
 
@@ -157,6 +159,12 @@ int main(int argc, char **argv) {
 
   if (display_gfx) img.display();
 
+  if(load_address) {
+    unsigned short loadaddress16bit = load_address.value();
+    std::cerr << std::format("Prepending a load address of ${:04X}.\n", loadaddress16bit);
+    std::cout << static_cast<char>(loadaddress16bit & 0xFF) << static_cast<char>(loadaddress16bit >> 8);
+  }
   scan_image(img, std::cout);
+
   return 0;
 }
