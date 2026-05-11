@@ -1,71 +1,162 @@
-#include <cmath>
-#include <Magick++.h>
-#include <iostream>
-
-#define DEFAULT_THRESHOLD 0.5
-
-/*
- * Actually the convertion is currently to screen codes not to
- * PETSCII. TODO: This needs to be fixed! OR cmd-line switch!
+/**
+ * \file petscii80x50.cc
+ * \brief Convert an image to a stream of C64 screen-code block characters.
+ *
+ * Loads an image, optionally resizes it to fit within 80×50 pixels, applies
+ * a configurable luminance threshold to produce a 1-bit image, then maps
+ * every 2×2 pixel quad to the closest C64 block character (screen code).
+ *
+ * The output is a raw byte stream of screen codes, one character per 2×2
+ * pixel region, suitable for POKE-ing directly into C64 screen RAM.
+ *
+ * \note The mapping currently produces \b screen codes, not PETSCII codes.
+ *       These are numerically different for many characters.  A future
+ *       \c --petscii flag should add a translation pass before output.
+ *
+ * Build dependencies: Magick++, CLI11
+ * Requires: C++23 (-std=c++23)
  */
 
-const int petscii_block_chars[16] = {
-  /* 0000 */ ' ', /* Nothing set */
-  /* 0001 */ 108, /* ▗ */
-  /* 0010 */ 123, /* ▖ */
-  /* 0011 */ 98,  /* ▄ */
-  /* 0100 */ 124, /* upper right */
-  /* 0101 */ 225, /* ▐ */
-  /* 0110 */ 255, /* ▞ */
-  /* 0111 */ 254, /* ▟ */
-  /* 1000 */ 126, /* upper left ▘ */
-  /* 1001 */ 127, /* ▚ */
-  /* 1010 */ 97, /* ▌ */
-  /* 1011 */ 252, /* ▙*/
-  /* 1100 */ 226, /* ▀ */
-  /* 1101 */ 251, /* ▜ */
-  /* 1110 */ 236, /* ▛ */
-  /* 1111 */ 224 /* full block █ */
-};
+#include <array>
+#include <format>
+#include <iostream>
+#include <ostream>
 
-void scan_image(const Magick::Image &img) {
-  unsigned int row, column;
-  int idx;
-  
-  
-  for(row = 0; row < img.rows(); row += 2) {
-    for(column = 0; column < img.columns(); column += 2) {
-      Magick::ColorMono coltl(img.pixelColor(column, row));
-      Magick::ColorMono coltr(img.pixelColor(column + 1, row));
-      Magick::ColorMono colbl(img.pixelColor(column, row + 1));
-      Magick::ColorMono colbr(img.pixelColor(column + 1, row + 1));
+#include <Magick++.h>
+#include <CLI/CLI.hpp>
+
+// ── constants ─────────────────────────────────────────────────────────────────
+
+/// Maximum image width accepted without resizing (one C64 screen column = 2 px).
+inline constexpr unsigned MAX_W = 80;
+/// Maximum image height accepted without resizing (one C64 screen row = 2 px).
+inline constexpr unsigned MAX_H = 50;
+
+/// Default luminance threshold for the 1-bit conversion (0.0–1.0).
+inline constexpr double DEFAULT_THRESHOLD = 0.5;
+
+// ── screen-code lookup table ──────────────────────────────────────────────────
+
+/**
+ * \brief C64 screen codes for the 16 possible 2×2 pixel block patterns.
+ *
+ * Each 2×2 quad is mapped to a 4-bit index by treating the four pixels as
+ * binary digits arranged as:
+ *
+ * ```
+ *   bit 3 (MSB)  bit 2
+ *   bit 1        bit 0 (LSB)
+ * ```
+ *
+ * A pixel that is \e on (foreground) contributes a 1 bit.
+ * The resulting index selects the screen code of the C64 block character
+ * whose filled quadrants match the lit pixels.
+ *
+ * \note These are \b screen codes (the raw values written to screen RAM),
+ *       not PETSCII character codes.  See the file-level note.
+ */
+constexpr std::array<unsigned char, 16> screen_code_blocks {{
+  /* 0b0000 */  32, ///< ' '  — blank
+  /* 0b0001 */ 108, ///< ▗   — bottom-right
+  /* 0b0010 */ 123, ///< ▖   — bottom-left
+  /* 0b0011 */  98, ///< ▄   — bottom half
+  /* 0b0100 */ 124, ///< ▝   — top-right
+  /* 0b0101 */ 225, ///< ▐   — right half
+  /* 0b0110 */ 255, ///< ▞   — diagonal (top-right + bottom-left)
+  /* 0b0111 */ 254, ///< ▟   — all except top-left
+  /* 0b1000 */ 126, ///< ▘   — top-left
+  /* 0b1001 */ 127, ///< ▚   — diagonal (top-left + bottom-right)
+  /* 0b1010 */  97, ///< ▌   — left half
+  /* 0b1011 */ 252, ///< ▙   — all except top-right
+  /* 0b1100 */ 226, ///< ▀   — top half
+  /* 0b1101 */ 251, ///< ▜   — all except bottom-left
+  /* 0b1110 */ 236, ///< ▛   — all except bottom-right
+  /* 0b1111 */ 224, ///< █   — full block
+}};
+
+// ── image scanning ────────────────────────────────────────────────────────────
+
+/**
+ * \brief Convert a thresholded image to C64 screen-code block characters.
+ *
+ * Iterates over the image in 2×2 pixel steps.  For each quad the four pixel
+ * luminances are read as mono (1-bit) values; the four bits are packed into a
+ * nibble (top-left = MSB, bottom-right = LSB) and used as an index into
+ * \c screen_code_blocks.  The resulting screen code byte is written to \p out.
+ *
+ * The image must already have been thresholded to a 1-bit (mono) state.
+ * Its dimensions must be even in both axes; any trailing odd row or column
+ * is silently ignored.
+ *
+ * \param img  Source image (read-only, must be mono/thresholded).
+ * \param out  Destination byte stream for the screen code output.
+ */
+void scan_image(const Magick::Image &img, std::ostream &out) {
+  for (unsigned row = 0; row + 1 < img.rows(); row += 2) {
+    for (unsigned col = 0; col + 1 < img.columns(); col += 2) {
       /*
-	Now convert:
-	12
-	34
-	to a binary number 1234 which we use as an index in the screen code table.
+       * Sample the four pixels of the 2×2 quad:
+       *   tl tr
+       *   bl br
+       *
+       * ColorMono::mono() returns true for white (background) and false for
+       * black (foreground), so we negate to treat dark pixels as "set" bits.
        */
-      idx = !coltl.mono() << 3 | !coltr.mono() << 2 | !colbl.mono() << 1 | !colbr.mono();
-      std::cout.put(petscii_block_chars[idx]);
+      const bool tl = !Magick::ColorMono(img.pixelColor(col,     row    )).mono();
+      const bool tr = !Magick::ColorMono(img.pixelColor(col + 1, row    )).mono();
+      const bool bl = !Magick::ColorMono(img.pixelColor(col,     row + 1)).mono();
+      const bool br = !Magick::ColorMono(img.pixelColor(col + 1, row + 1)).mono();
+
+      const unsigned idx = (tl << 3) | (tr << 2) | (bl << 1) | br;
+      out.put(static_cast<char>(screen_code_blocks[idx]));
     }
-    //std::cout << '\n';
   }
-  
 }
 
+// ── entry point ───────────────────────────────────────────────────────────────
+
+/**
+ * \brief Program entry point.
+ *
+ * Parses CLI options, loads the image, resizes if necessary, applies the
+ * luminance threshold, and writes the screen-code byte stream to stdout.
+ *
+ * \param argc  Argument count.
+ * \param argv  Argument vector.
+ * \return 0 on success, non-zero on error.
+ */
 int main(int argc, char **argv) {
-  if(argc < 2) {
-    std::cerr << "Usage: petscii80x25 <file>\n";
-    return 1;
-  } else {
-    Magick::Image img(argv[1]);
-    if(img.columns() > 80  || img.rows() > 50) {
-      std::cerr << "Resizing image from (" << img.columns() << '*' << img.rows() << ").\n";
-      img.resize(Magick::Geometry(80, 50));
-    }
-    img.threshold(DEFAULT_THRESHOLD);
-    //img.display();
-    scan_image(img);
+  CLI::App app{"petscii80x50 – convert an image to C64 screen-code block characters"};
+
+  std::string input_file;
+  double threshold   = DEFAULT_THRESHOLD;
+  bool   display_gfx = false;
+
+  app.add_option("file", input_file, "Input image file to convert")
+     ->required()
+     ->check(CLI::ExistingFile);
+  app.add_option("--threshold,-t", threshold,
+                 std::format("Luminance threshold for 1-bit conversion "
+                             "(0.0–1.0, default {:.1f})", DEFAULT_THRESHOLD))
+     ->check(CLI::Range(0.0, 1.0));
+  app.add_flag("--display,-d", display_gfx,
+               "Display the thresholded image on screen before converting");
+
+  CLI11_PARSE(app, argc, argv);
+
+  Magick::Image img(input_file);
+
+  /* Resize down if the image is larger than the maximum accepted dimensions */
+  if (img.columns() > MAX_W || img.rows() > MAX_H) {
+    std::cerr << std::format("Resizing image from {}x{} to fit within {}x{}.\n",
+                             img.columns(), img.rows(), MAX_W, MAX_H);
+    img.resize(Magick::Geometry(MAX_W, MAX_H));
   }
+
+  img.threshold(threshold);
+
+  if (display_gfx) img.display();
+
+  scan_image(img, std::cout);
   return 0;
 }
