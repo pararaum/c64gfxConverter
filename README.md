@@ -13,7 +13,7 @@ Convert a 320*200 pixel hires bitmap into a C64 format.
 
 ## petscii80x50 ##
 
-Convert a 80*50 pixel bw image into a petscii screen.
+Convert a 80*50 pixel black and white image into a screencode/petscii screen.
 
 ## petsciiconvert ##
 
@@ -73,6 +73,22 @@ Options:
 ```
 
 ## petscii80x50 ##
+
+```
+petscii80x50 – convert an image to C64 screen-code block characters
+Usage: ./petscii80x50 [OPTIONS] file
+
+Positionals:
+  file TEXT:FILE REQUIRED     Input image file to convert
+
+Options:
+  -h,--help                   Print this help message and exit
+  -t,--threshold FLOAT:FLOAT in [0 - 1]
+                              Luminance threshold for 1-bit conversion (0.0–1.0, default 0.5)
+  -d,--display                Display the thresholded image on screen before converting
+  --load-address              prepend a load address to the output
+```
+
 ## petsciiconvert ##
 ## spriteconv ##
 
