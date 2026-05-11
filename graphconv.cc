@@ -7,6 +7,11 @@
  * colours, and writes the result as a raw C64 bitmap file (.c64).
  * Optionally the quantised image can also be saved as ILBM and/or XPM.
  *
+ * Two quantisation modes are available (selectable at runtime):
+ *   - Default: nearest-colour snap per pixel, block colour pair chosen by
+ *              exhaustive error minimisation.
+ *   - Stucki:  block-constrained Stucki error diffusion for smoother output.
+ *
  * Build dependencies: Magick++, CLI11
  * Requires: C++23 (-std=c++23)
  */
@@ -168,7 +173,7 @@ void write_char_blocks(const std::list<CharBlock> &blocks,
                            addr + gfx_bytes, addr + gfx_bytes + 40u*25u);
 }
 
-// ── block quantisation ────────────────────────────────────────────────────────
+// ── block quantisation helpers ────────────────────────────────────────────────
 
 /**
  * \brief Total quantisation error when a block is restricted to two colours.
@@ -233,7 +238,7 @@ quantise_block(Magick::Image &img, unsigned x_, unsigned y_,
   return { std::move(bitmap), total };
 }
 
-// ── main quantisation pass ────────────────────────────────────────────────────
+// ── nearest-colour quantisation pass ─────────────────────────────────────────
 
 /**
  * \brief Optimal block-wise quantisation by exhaustive two-colour search.
@@ -264,6 +269,157 @@ quantise_block(Magick::Image &img, unsigned x_, unsigned y_,
       blocks.push_back({ best_i, best_j, std::move(bitmap) });
     }
   }
+  return blocks;
+}
+
+// ── Stucki dithering pass ─────────────────────────────────────────────────────
+
+/**
+ * \brief Block-constrained Stucki error-diffusion quantisation.
+ *
+ * Converts the image to C64 format using the Stucki error-diffusion algorithm,
+ * while honouring the C64 hires constraint that every 8×8 character block may
+ * use at most two palette colours.
+ *
+ * ### Algorithm overview
+ *
+ * A floating-point RGB error buffer (same dimensions as the image) accumulates
+ * quantisation error diffused from already-processed pixels.  Pixels are
+ * visited strictly left-to-right, top-to-bottom (raster order).
+ *
+ * For each pixel:
+ *  1. Add the accumulated buffer error to the original pixel colour to get a
+ *     "corrected" colour, clamped to [0, 1].
+ *  2. Snap the corrected colour to whichever of the block's two palette colours
+ *     is closer.
+ *  3. Compute the quantisation error = corrected − chosen.
+ *  4. Distribute the error to not-yet-visited neighbours using the Stucki
+ *     kernel (divisor 42):
+ *
+ * ```
+ *   row+0:            [current]  8/42   4/42
+ *   row+1:   2/42   4/42   8/42   4/42   2/42
+ *   row+2:   1/42   2/42   4/42   2/42   1/42
+ * ```
+ *
+ * ### Two-colour constraint
+ *
+ * Before the dithering pass the best colour pair for every 8×8 block is
+ * determined by the same exhaustive search used in \c handle_block_wise,
+ * operating on the original un-diffused pixel colours.  During dithering each
+ * pixel may only be assigned one of its block's two pre-chosen colours, so the
+ * C64 per-block two-colour constraint is never violated.  Error still
+ * propagates freely across block boundaries in the floating-point buffer,
+ * which is what gives Stucki its characteristic smoothing benefit.
+ *
+ * \param img  Image to process in-place (must be ≥320×200, TrueColorType).
+ * \return List of CharBlocks in left-to-right, top-to-bottom order.
+ */
+[[nodiscard]] std::list<CharBlock> handle_block_wise_stucki(Magick::Image &img)
+{
+  const unsigned W = img.columns();
+  const unsigned H = img.rows();
+
+  // ── Stucki kernel ─────────────────────────────────────────────────────────
+  //
+  // Each entry is {col_delta, row_delta, weight_numerator}.
+  // All deltas are relative to the current pixel.  Only right-of and
+  // below entries are listed; the kernel is causal (no back-diffusion).
+  using KernelEntry = std::tuple<int, int, int>;
+  constexpr std::array<KernelEntry, 12> stucki_kernel {{
+    {  1, 0, 8 }, {  2, 0, 4 },
+    { -2, 1, 2 }, { -1, 1, 4 }, {  0, 1, 8 }, {  1, 1, 4 }, {  2, 1, 2 },
+    { -2, 2, 1 }, { -1, 2, 2 }, {  0, 2, 4 }, {  1, 2, 2 }, {  2, 2, 1 },
+  }};
+  constexpr double STUCKI_DIV = 42.0;
+
+  // ── Per-pixel RGB error buffer ────────────────────────────────────────────
+  //
+  // Indexed as err[y * W + x].  Initialised to zero; updated during the
+  // dithering pass as error is diffused forward.
+  std::vector<std::array<double, 3>> err(W * H, {0.0, 0.0, 0.0});
+
+  // ── Pre-compute the best colour pair for every block ──────────────────────
+  //
+  // The exhaustive search runs on the original image before any diffusion,
+  // ensuring block colour choices are independent of processing order.
+  const unsigned BW = W / BLK;  ///< Number of blocks per image row
+  const unsigned BH = H / BLK;  ///< Number of block rows
+
+  std::vector<std::pair<int,int>> block_colors(BW * BH);
+  for (unsigned by = 0; by < BH; ++by)
+    for (unsigned bx = 0; bx < BW; ++bx) {
+      double best_err = std::numeric_limits<double>::infinity();
+      int best_i = 0, best_j = 1;
+      for (int i : std::views::iota(0, NCOLORS))
+        for (int j : std::views::iota(i + 1, NCOLORS))
+          if (const double e = block_error(img, bx*BLK, by*BLK, i, j); e < best_err)
+            std::tie(best_i, best_j, best_err) = std::tuple{i, j, e};
+      block_colors[by * BW + bx] = { best_i, best_j };
+    }
+
+  // ── Pre-allocate per-block bitmaps ────────────────────────────────────────
+  std::vector<std::vector<bool>> bitmaps(BW * BH,
+                                         std::vector<bool>(BLK * BLK, false));
+
+  // ── Dithering pass ────────────────────────────────────────────────────────
+  for (unsigned y = 0; y < H; ++y) {
+    for (unsigned x = 0; x < W; ++x) {
+
+      const unsigned bx = x / BLK;
+      const unsigned by = y / BLK;
+      const auto [cidx0, cidx1] = block_colors[by * BW + bx];
+      const auto pal0 = palette_color(cidx0);
+      const auto pal1 = palette_color(cidx1);
+
+      // Apply accumulated diffusion error to the original pixel colour.
+      const Magick::ColorRGB orig(img.pixelColor(x, y));
+      const auto &e = err[y * W + x];
+      const Magick::ColorRGB corrected(
+        std::clamp(orig.red()   + e[0], 0.0, 1.0),
+        std::clamp(orig.green() + e[1], 0.0, 1.0),
+        std::clamp(orig.blue()  + e[2], 0.0, 1.0)
+      );
+
+      // Snap to the closer of the block's two allowed palette colours.
+      const bool use1 = col_dist(corrected, pal1) < col_dist(corrected, pal0);
+      const Magick::ColorRGB &chosen = use1 ? pal1 : pal0;
+
+      // Store the pixel decision and write the quantised colour back into the
+      // image (so that optional ILBM/XPM output reflects the dithered result).
+      bitmaps[by * BW + bx][(y % BLK) * BLK + (x % BLK)] = use1;
+      img.pixelColor(x, y, chosen);
+
+      // Compute quantisation error: corrected colour minus chosen palette colour.
+      const std::array<double, 3> qerr {
+        corrected.red()   - chosen.red(),
+        corrected.green() - chosen.green(),
+        corrected.blue()  - chosen.blue(),
+      };
+
+      // Distribute the error to future neighbours via the Stucki kernel.
+      for (const auto &[dx, dy, w] : stucki_kernel) {
+        const int nx = static_cast<int>(x) + dx;
+        const int ny = static_cast<int>(y) + dy;
+        if (nx < 0 || nx >= static_cast<int>(W) ||
+            ny < 0 || ny >= static_cast<int>(H))
+          continue;
+        const double weight = static_cast<double>(w) / STUCKI_DIV;
+        auto &ne = err[ny * W + nx];
+        ne[0] += qerr[0] * weight;
+        ne[1] += qerr[1] * weight;
+        ne[2] += qerr[2] * weight;
+      }
+    }
+  }
+
+  // ── Assemble CharBlock list in raster order ───────────────────────────────
+  std::list<CharBlock> blocks;
+  for (unsigned by = 0; by < BH; ++by)
+    for (unsigned bx = 0; bx < BW; ++bx) {
+      const auto [i, j] = block_colors[by * BW + bx];
+      blocks.push_back({ i, j, std::move(bitmaps[by * BW + bx]) });
+    }
   return blocks;
 }
 
@@ -312,9 +468,9 @@ void handle_image(Magick::Image &img,
 /**
  * \brief Program entry point.
  *
- * Parses CLI options, loads and crops the image, runs block quantisation,
- * writes the C64 binary output, and optionally writes ILBM/XPM files and
- * displays the image.
+ * Parses CLI options, loads and crops the image, runs the chosen quantisation
+ * pass, writes the C64 binary output, and optionally writes ILBM/XPM files
+ * and displays the image.
  *
  * \param argc  Argument count.
  * \param argv  Argument vector.
@@ -327,6 +483,7 @@ int main(int argc, char **argv) {
   bool write_ilbm  = false;
   bool write_xpm   = false;
   bool display_gfx = false;
+  bool use_stucki  = false;
 
   app.add_option("file", input_file, "Input image file to convert")
      ->required()
@@ -334,6 +491,9 @@ int main(int argc, char **argv) {
   app.add_flag("--write-ilbm", write_ilbm,  "Also save the quantised image as ILBM");
   app.add_flag("--write-xpm",  write_xpm,   "Also save the quantised image as XPM");
   app.add_flag("--display",    display_gfx, "Display the image before and after conversion");
+  app.add_flag("--stucki",     use_stucki,
+               "Use block-constrained Stucki error diffusion instead of "
+               "nearest-colour quantisation (smoother output, slower)");
 
   CLI11_PARSE(app, argc, argv);
 
@@ -352,7 +512,9 @@ int main(int argc, char **argv) {
 
   if (display_gfx) img.display();
 
-  const std::list<CharBlock> blocks = handle_block_wise(img);
+  const std::list<CharBlock> blocks = use_stucki
+    ? handle_block_wise_stucki(img)
+    : handle_block_wise(img);
 
   if (write_ilbm) img.write(change_ending(input_file, "ilbm"));
   if (write_xpm)  img.write(change_ending(input_file, "xpm"));
