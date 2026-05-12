@@ -20,13 +20,8 @@ graphconv:	graphconv.o change_ending.o
 chargenconv:	chargenconv.o change_ending.o
 	$(CXX) -o $@ $+ $(MAGICK) $(CXXFLAGS) $(CPPFLAGS)
 
-spriteconv:	spriteconv_cli.o spriteconv.o
+spriteconv:	spriteconv.o
 	$(CXX) -o $@ $+ $(CXXFLAGS) $(CPPFLAGS) -lSDL2 -lSDL2_image
-
-spriteconv_cli.c:	spriteconv_cli.ggo
-	gengetopt -i $< -F spriteconv_cli -u
-
-spriteconv_cli.o: spriteconv_cli.c spriteconv_cli.ggo
 
 petsciiconvert_cli.c:	petsciiconvert_cli.ggo
 	gengetopt -i $< -F $(basename $@) -u
