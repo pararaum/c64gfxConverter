@@ -92,6 +92,26 @@ Options:
 ## petsciiconvert ##
 ## spriteconv ##
 
+```spriteconv v0.0 - convert images to C64 sprites
+Usage: ./spriteconv [OPTIONS] SUBCOMMAND
+
+Options:
+  -h,--help                   Print this help message and exit
+  --version                   Display program version information and exit
+  -x,--x-position INT [0]     X position of sprite in image
+  -y,--y-position INT [0]     Y position of sprite in image
+  -t,--transparent INT [0]    Transparent colour index
+  --labelname TEXT            Name to use for the label where sprite data starts
+  -c,--spritecolumns INT [1]  Number of sprite columns in the sprite sheet (negative = use whole width)
+  -r,--spriterows INT [1]     Number of sprite rows in the sprite sheet (negative = use whole height)
+  -W,--columnwidth INT [24]   Width of a single sprite in the sprite sheet (pixels)
+  -H,--rowheight INT [21]     Height of a single sprite in the sprite sheet (pixels)
+
+Subcommands:
+  mono                        Convert monochrome (1-bit) sprites
+  multi                       Convert multicolour sprites
+```
+
 # Links #
 
  * http://www.syntiac.com/tech_ga_c64.html
