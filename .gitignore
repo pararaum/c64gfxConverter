@@ -12,6 +12,7 @@ spriteconv
 # Compiled Object files
 *.o
 *.obj
+*.d
 
 # Compiled Dynamic libraries
 *.so
