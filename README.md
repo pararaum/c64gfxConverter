@@ -92,7 +92,8 @@ Options:
 ## petsciiconvert ##
 ## spriteconv ##
 
-```spriteconv v0.0 - convert images to C64 sprites
+```
+spriteconv -- convert images to C64 sprites
 Usage: ./spriteconv [OPTIONS] SUBCOMMAND
 
 Options:
@@ -106,6 +107,7 @@ Options:
   -r,--spriterows INT [1]     Number of sprite rows in the sprite sheet (negative = use whole height)
   -W,--columnwidth INT [24]   Width of a single sprite in the sprite sheet (pixels)
   -H,--rowheight INT [21]     Height of a single sprite in the sprite sheet (pixels)
+  -d,--display                Display the loaded image in a window (press any key to close)
 
 Subcommands:
   mono                        Convert monochrome (1-bit) sprites

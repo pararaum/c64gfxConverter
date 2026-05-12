@@ -33,6 +33,8 @@
 #include <SDL2/SDL_image.h>
 #include <CLI/CLI.hpp>
 
+#define VERSION "1.0"
+
 // ── sprite data structures ────────────────────────────────────────────────────
 
 /// Common interface for sprite types.
@@ -108,6 +110,80 @@ int get_color(SDL_Surface *surface, int x, int y) {
   const Uint8 *row = static_cast<const Uint8 *>(surface->pixels)
                    + y * surface->pitch;
   return row[x];
+}
+
+// ── display ───────────────────────────────────────────────────────────────────
+
+/**
+ * \brief Display an SDL surface in a window and wait for the user to close it.
+ *
+ * Creates a window sized to the surface, uploads the surface as a texture
+ * (SDL handles palette expansion automatically), and runs an event loop until
+ * the user presses any key or closes the window.
+ *
+ * \note Requires \c SDL_INIT_VIDEO to have been initialised before calling.
+ *
+ * \param surface   The surface to display.
+ * \param title     Window title string.
+ * \return true on clean exit, false if an SDL error occurred.
+ */
+bool display_surface(SDL_Surface *surface, const std::string &title) {
+  SDL_Window *window = SDL_CreateWindow(
+    title.c_str(),
+    SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+    surface->w, surface->h,
+    SDL_WINDOW_SHOWN
+  );
+  if (!window) {
+    std::cerr << std::format("SDL_CreateWindow() failed: {}\n", SDL_GetError());
+    return false;
+  }
+
+  SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
+  if (!renderer) {
+    std::cerr << std::format("SDL_CreateRenderer() failed: {}\n", SDL_GetError());
+    SDL_DestroyWindow(window);
+    return false;
+  }
+
+  /* SDL_CreateTextureFromSurface expands the palette automatically, so an
+   * 8 bpp indexed surface is displayed with its correct colours without any
+   * manual conversion. */
+  SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
+  if (!texture) {
+    std::cerr << std::format("SDL_CreateTextureFromSurface() failed: {}\n", SDL_GetError());
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    return false;
+  }
+
+  SDL_RenderClear(renderer);
+  SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+  SDL_RenderPresent(renderer);
+
+  /* Event loop: keep the window alive until keypress or close. */
+  SDL_Event event;
+  bool running = true;
+  while (running) {
+    /* SDL_WaitEvent blocks until an event arrives, avoiding a busy-spin. */
+    if (SDL_WaitEvent(&event) == 0) {
+      std::cerr << std::format("SDL_WaitEvent() failed: {}\n", SDL_GetError());
+      break;
+    }
+    switch (event.type) {
+      case SDL_QUIT:
+      case SDL_KEYDOWN:
+        running = false;
+        break;
+      default:
+        break;
+    }
+  }
+
+  SDL_DestroyTexture(texture);
+  SDL_DestroyRenderer(renderer);
+  SDL_DestroyWindow(window);
+  return true;
 }
 
 // ── sprite conversion ─────────────────────────────────────────────────────────
@@ -201,15 +277,16 @@ MultiSpriteData convert_sprite(SDL_Surface *surface, int x, int y, int border) {
  */
 struct Options {
   // common options
-  std::string              input_file;          ///< Positional: image file (owned by subcommand)
-  int                      x_position    = 0;   ///< --x-position / -x
-  int                      y_position    = 0;   ///< --y-position / -y
-  int                      transparent   = 0;   ///< --transparent / -t
-  std::optional<std::string> labelname;          ///< --labelname (optional)
-  int                      spritecolumns = 1;   ///< --spritecolumns / -c
-  int                      spriterows    = 1;   ///< --spriterows / -r
-  int                      columnwidth   = 24;  ///< --columnwidth / -W
-  int                      rowheight     = 21;  ///< --rowheight / -H
+  std::string                input_file;          ///< Positional: image file (owned by subcommand)
+  int                        x_position    = 0;   ///< --x-position / -x
+  int                        y_position    = 0;   ///< --y-position / -y
+  int                        transparent   = 0;   ///< --transparent / -t
+  std::optional<std::string> labelname;            ///< --labelname (optional)
+  int                        spritecolumns = 1;   ///< --spritecolumns / -c
+  int                        spriterows    = 1;   ///< --spriterows / -r
+  int                        columnwidth   = 24;  ///< --columnwidth / -W
+  int                        rowheight     = 21;  ///< --rowheight / -H
+  bool                       display       = false; ///< --display / -d
 
   // multicolour subcommand options
   bool multi_mode = false; ///< true when the "multi" subcommand was selected
@@ -276,34 +353,31 @@ void extract_sprite_data(SDL_Surface *surface, const Options &opts) {
  *
  * ### CLI structure
  *
- * Exactly one subcommand must be given.  Common options are registered on the
- * top-level app and are accepted before the subcommand name regardless of
- * which mode is used.  The positional \c file argument is owned by each
- * subcommand individually so that it appears after the subcommand name in
- * usage and --help output:
+ * Exactly one subcommand must be given.  Common options (including --display)
+ * are registered on the top-level app and accepted before the subcommand name:
  *
  * ```
  * spriteconv [COMMON OPTIONS] mono  <file>
  * spriteconv [COMMON OPTIONS] multi [MULTI OPTIONS] <file>
  * ```
  *
- * \c multi_mode is set by checking \c multi_cmd->parsed() after
- * \c CLI11_PARSE returns, which is cleaner than a callback mutating state
- * before the rest of the options have been validated.
+ * ### SDL initialisation
+ *
+ * \c SDL_INIT_VIDEO is only requested when \c --display is active; without it
+ * only the bare minimum needed for \c IMG_Load is initialised.
  *
  * \param argc  Argument count.
  * \param argv  Argument vector.
  * \return 0 on success, non-zero on error.
  */
 int main(int argc, char **argv) {
-  CLI::App app{"spriteconv v0.0 - convert images to C64 sprites"};
-  app.set_version_flag("--version", "0.0");
-  // Enforce that exactly one of "mono" or "multi" must be supplied.
+  CLI::App app{"spriteconv -- convert images to C64 sprites"};
+  app.set_version_flag("--version", VERSION);
   app.require_subcommand(1);
 
   Options opts;
 
-  // ── common options (visible regardless of subcommand) ─────────────────────
+  // ── common options ────────────────────────────────────────────────────────
   app.add_option("--x-position,-x", opts.x_position,
                  "X position of sprite in image")
      ->default_val(0);
@@ -329,10 +403,10 @@ int main(int argc, char **argv) {
   app.add_option("--rowheight,-H", opts.rowheight,
                  "Height of a single sprite in the sprite sheet (pixels)")
      ->default_val(21);
+  app.add_flag("--display,-d", opts.display,
+               "Display the loaded image in a window (press any key to close)");
 
   // ── "mono" subcommand ─────────────────────────────────────────────────────
-  // The file positional is registered on the subcommand, not the top-level
-  // app, so it appears after the subcommand name in usage output.
   CLI::App *mono_cmd = app.add_subcommand("mono", "Convert monochrome (1-bit) sprites");
   mono_cmd->add_option("file", opts.input_file,
                        "Input image file (8 bpp palette PNG/etc.)")
@@ -356,11 +430,14 @@ int main(int argc, char **argv) {
 
   CLI11_PARSE(app, argc, argv);
 
-  // Determine mode from which subcommand was parsed.
   opts.multi_mode = multi_cmd->parsed();
 
   // ── SDL initialisation ────────────────────────────────────────────────────
-  if (SDL_Init(0) != 0) {
+  // Only request SDL_INIT_VIDEO when the display window is actually needed;
+  // IMG_Load works without it and skipping it avoids opening a display
+  // connection in purely batch/headless usage.
+  const Uint32 sdl_flags = opts.display ? SDL_INIT_VIDEO : 0;
+  if (SDL_Init(sdl_flags) != 0) {
     std::cerr << std::format("SDL_Init() failed: {}\n", SDL_GetError());
     return 2;
   }
@@ -372,6 +449,9 @@ int main(int argc, char **argv) {
     SDL_Quit();
     return 3;
   }
+
+  if (opts.display)
+    display_surface(surface, opts.input_file);
 
   extract_sprite_data(surface, opts);
 
