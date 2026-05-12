@@ -33,8 +33,6 @@
 #include <SDL2/SDL_image.h>
 #include <CLI/CLI.hpp>
 
-#define VERSION "1.0"
-
 // ── sprite data structures ────────────────────────────────────────────────────
 
 /// Common interface for sprite types.
@@ -372,7 +370,7 @@ void extract_sprite_data(SDL_Surface *surface, const Options &opts) {
  */
 int main(int argc, char **argv) {
   CLI::App app{"spriteconv -- convert images to C64 sprites"};
-  app.set_version_flag("--version", VERSION);
+  app.set_version_flag("--version", SUITE_VERSION);
   app.require_subcommand(1);
 
   Options opts;
