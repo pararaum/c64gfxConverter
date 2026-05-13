@@ -500,7 +500,7 @@ void handle_image(Magick::Image &img,
  * and displays the image.
  */
 int main(int argc, char **argv) {
-    CLI::App app{"graphconv – convert an image to C64 hires bitmap format"};
+    CLI::App app{std::format("graphconv V{} – convert an image to C64 hires bitmap format", SUITE_VERSION)};
 
     std::string input_file;
     bool write_ilbm   = false;

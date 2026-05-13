@@ -3,7 +3,7 @@
 # ── suite version (CalVer: YYYY.N) ────────────────────────────────────────────
 # Bump the release counter (N) on each release within a year.
 # Passed to every translation unit as -DSUITE_VERSION="YYYY.N".
-VERSION := 2025.1
+VERSION := 2026.5
 
 # ── install prefix ────────────────────────────────────────────────────────────
 PREFIX  ?= /usr/local
