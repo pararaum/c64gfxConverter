@@ -42,8 +42,17 @@ CXXFLAGS += $(DEPFLAGS)
 # ── targets ───────────────────────────────────────────────────────────────────
 BIN = graphconv spriteconv petscii80x50 chargenconv petsciiconvert
 
-.PHONY: all
+# ── reporter ──────────────────────────────────────────────────────────────────
+REPORTER ?= compact
+
+
+VPATH=test
+
+.PHONY: all test
 all: $(BIN)
+
+test: test_chargenconv
+	./test_chargenconv --success --reporter $(REPORTER)
 
 # petscii80x50 builds via an intermediate .o like the other targets.
 petscii80x50: petscii80x50.o
@@ -52,8 +61,11 @@ petscii80x50: petscii80x50.o
 graphconv: graphconv.o change_ending.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(MAGICK_LIBS)
 
-chargenconv: chargenconv.o change_ending.o
+chargenconv: chargenconv.o change_ending.o chargenconv.main.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(MAGICK_LIBS)
+
+test_chargenconv: chargenconv.o change_ending.o chargenconv.test.o
+	$(CXX) $(LDFLAGS) -o $@ $^ $(MAGICK_LIBS) -lCatch2Main -lCatch2
 
 spriteconv: spriteconv.o
 	$(CXX) $(LDFLAGS) -o $@ $^ $(SDL_LIBS)
@@ -78,6 +90,7 @@ petsciiconvert: petsciiconvert_cli.o parse-petsciifile.o compare_frames.o petsci
 clean:
 	rm -f $(BIN) *.o *.d
 	rm -f *_cli.c *_cli.h
+	rm -f test_*
 
 install: all
 	install -d $(DESTDIR)$(PREFIX)/bin

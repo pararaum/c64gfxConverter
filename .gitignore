@@ -21,3 +21,5 @@ spriteconv
 *.a
 *.lib
 
+# Test related
+test_*

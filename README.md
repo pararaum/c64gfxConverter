@@ -3,25 +3,11 @@
 Tools to convert graphics in order to use them on the C64. Graphics
 encompasses bitmap and PETSCII graphics.
 
-## chargenconv ##
-
-Convert a 128*128 pixel black and white graphic into a font.
-
-## graphconv ##
-
-Convert a 320*200 pixel hires bitmap into a C64 format.
-
-## petscii80x50 ##
-
-Convert a 80*50 pixel black and white image into a screencode/petscii screen.
-
-## petsciiconvert ##
-
-Convert animation in the `*.c` format into binary data.
-
-## spriteconv ##
-
-Convert a spritesheet image into sprite data.
+  * chargenconv: Convert a 128*128 pixel black and white graphic into a font.
+  * graphconv: Convert a 320*200 pixel hires bitmap into a C64 format.
+  * petscii80x50: Convert a 80*50 pixel black and white image into a screencode/petscii screen.
+  * petsciiconvert: Convert animation in the `*.c` format into binary data.
+  * spriteconv: Convert a spritesheet image into sprite data.
 
 # Building #
 
@@ -48,6 +34,21 @@ Then issue "make".
 # Usage #
 
 ## chargenconv ##
+
+```
+chargenconv V2026.5 – convert a font image to C64 character-generator data
+Usage: ./chargenconv [OPTIONS] file
+
+Positionals:
+  file TEXT:FILE REQUIRED     input image file to convert
+
+Options:
+  -h,--help                   Print this help message and exit
+  --load-addr UINT:INT in [0 - 65535]
+                              Load address to use for output
+  -d,--display                Display the image
+  --save-xpm                  Save a XPM image
+```
 
 ## graphconv ##
 
