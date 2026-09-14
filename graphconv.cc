@@ -620,6 +620,7 @@ int main(int argc, char **argv) {
   bool use_stucki = false;
   bool verbose = false;
   std::string palette_name = "grafx2";
+  std::string output_file;
 
   app.add_option("file", input_file, "Input image file to convert")
   ->required()
@@ -658,6 +659,10 @@ int main(int argc, char **argv) {
     return {};
   });
 
+  app.add_option("-o,--output", output_file,
+                 "Output file path (default: input filename with extension "
+                 "replaced by \".c64\")");
+
   CLI11_PARSE(app, argc, argv);
 
   // Activate the selected palette (global pointer used by palette_color()).
@@ -688,7 +693,9 @@ int main(int argc, char **argv) {
     img.write(change_ending(input_file, "xpm"));
   }
 
-  std::ofstream outfile(change_ending(input_file, "c64"), std::ios::binary);
+  const std::string c64_path =
+    output_file.empty() ? change_ending(input_file, "c64") : output_file;
+  std::ofstream outfile(c64_path, std::ios::binary);
   write_char_blocks(blocks, outfile);
 
   if(display_gfx) {
