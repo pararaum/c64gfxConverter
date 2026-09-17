@@ -12,6 +12,10 @@
  *   exhaustive error minimisation.
  * - Stucki: block-constrained Stucki error diffusion for smoother output.
  *
+ * By default the image is cropped to 320×200 before conversion.  Pass
+ * --no-crop to skip cropping; the image dimensions must then be multiples
+ * of 8 in both axes, otherwise the program exits with an error.
+ *
  * Multiple C64 palettes are available via --palette:
  * - grafx2   : Grafx2 default (original palette in this tool)
  * - pepto    : Phillip Timmermann's mathematically derived palette
@@ -375,11 +379,13 @@ void write_char_blocks(const std::list<CharBlock> &blocks, std::ostream &out,
     out << col;
   }
 
-  constexpr unsigned gfx_bytes = IMG_W * IMG_H / BLK;
+  // Each block contributes BLK bytes of pixel data (8 pixels × 1 bit, packed).
+  const unsigned gfx_bytes = static_cast<unsigned>(blocks.size()) * BLK;
+  const unsigned col_bytes  = static_cast<unsigned>(blocks.size());
   std::cerr << std::format("Gfx: ${:04X}-${:04X}\n", addr,
                            addr + gfx_bytes - 1);
   std::cerr << std::format("Col: ${:04X}-${:04X}\n", addr + gfx_bytes,
-                           addr + gfx_bytes + 40u * 25u);
+                           addr + gfx_bytes + col_bytes - 1);
 }
 
 // ── block quantisation helpers
@@ -619,6 +625,7 @@ int main(int argc, char **argv) {
   bool display_gfx = false;
   bool use_stucki = false;
   bool verbose = false;
+  bool no_crop = false;
   std::string palette_name = "grafx2";
   std::string output_file;
 
@@ -637,6 +644,13 @@ int main(int argc, char **argv) {
                "nearest-colour quantisation (smoother output, slower)");
   app.add_flag("--verbose", verbose,
                "Output verbose information while processing the image");
+  app.add_flag("--no-crop", no_crop,
+               "Do not crop the image to 320×200; instead convert the whole "
+               "image. Both the width and height must be multiples of 8, "
+               "otherwise an error is raised.");
+  app.add_option("-o,--output", output_file,
+                 "Output file path (default: input filename with extension "
+                 "replaced by \".c64\")");
 
   // Build a human-readable list of palette names for the help text.
   std::string palette_list;
@@ -659,10 +673,6 @@ int main(int argc, char **argv) {
     return {};
   });
 
-  app.add_option("-o,--output", output_file,
-                 "Output file path (default: input filename with extension "
-                 "replaced by \".c64\")");
-
   CLI11_PARSE(app, argc, argv);
 
   // Activate the selected palette (global pointer used by palette_color()).
@@ -670,11 +680,25 @@ int main(int argc, char **argv) {
   std::cerr << std::format("Using palette: {}\n", palette_name);
 
   Magick::Image img(input_file);
-  img.crop(Magick::Geometry(IMG_W, IMG_H, 0, 0));
 
-  if(img.columns() < IMG_W || img.rows() < IMG_H) {
-    throw std::invalid_argument(
-            std::format("wrong picture size ({}x{})", img.columns(), img.rows()));
+  if(no_crop) {
+    // Validate that both dimensions are multiples of 8 so every pixel
+    // falls inside a complete 8×8 character block.
+    const unsigned W = static_cast<unsigned>(img.columns());
+    const unsigned H = static_cast<unsigned>(img.rows());
+    if(W % BLK != 0 || H % BLK != 0) {
+      throw std::invalid_argument(
+        std::format("--no-crop requires image dimensions to be multiples of "
+                    "{}, but the image is {}×{} pixels",
+                    BLK, W, H));
+    }
+    std::cerr << std::format("No-crop mode: converting full {}×{} image\n", W, H);
+  } else {
+    img.crop(Magick::Geometry(IMG_W, IMG_H, 0, 0));
+    if(img.columns() < IMG_W || img.rows() < IMG_H) {
+      throw std::invalid_argument(
+        std::format("wrong picture size ({}x{})", img.columns(), img.rows()));
+    }
   }
 
   img.type(Magick::TrueColorType);
