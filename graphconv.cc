@@ -339,13 +339,15 @@ struct CharBlock {
  *  - Colour attribute section: one byte per block,
  *    high nybble = idx1, low nybble = idx0 (40×25 = 1 000 bytes)
  *
+ * \param keep_colours do not touch the per-block colours at all (no colour
+ *        swapping for better compression); used for uniform-colour images
  * \param first_bit if set, the very first bitmap bit (top-left pixel) is
  *        forced to this value by swapping the colours of the first block
  *        (which does not change the displayed image). std::nullopt means
  *        "do not care".
  */
 void write_char_blocks(const std::list<CharBlock> &blocks, std::ostream &out,
-                       unsigned short addr = 0x2000,
+                       unsigned short addr = 0x2000, bool keep_colours = false,
                        std::optional<bool> first_bit = std::nullopt) {
   CharBlock blk; // Used for assignment and handling the inversion.
   std::list<char> colours; // Store the colour blocks here.
@@ -361,10 +363,10 @@ void write_char_blocks(const std::list<CharBlock> &blocks, std::ostream &out,
     assert(blk.data.size() == BLK * BLK);
     
     blk = blkiterator;
-    if(last0 == blk.idx1 && last1 == blk.idx0) {
+    if(!keep_colours && last0 == blk.idx1 && last1 == blk.idx0) {
       blk.swap_colours();
     }
-    if(blk.all_equal()) {
+    if(!keep_colours && blk.all_equal()) {
       if(last0 == blk.idx1 || last1 == blk.idx0) {
 	blk.swap_colours();
       }
@@ -372,7 +374,7 @@ void write_char_blocks(const std::list<CharBlock> &blocks, std::ostream &out,
       blk.idx0 = last0;
       blk.idx1 = last1;
     }
-    if(is_first && first_bit && blk.data.front() != *first_bit) {
+    if(!keep_colours && is_first && first_bit && blk.data.front() != *first_bit) {
       blk.swap_colours();
     }
     is_first = false;
@@ -419,6 +421,35 @@ void write_char_blocks(const std::list<CharBlock> &blocks, std::ostream &out,
   return total;
 }
 
+/// A (bit 0, bit 1) pair of palette indices.
+using ColourPair = std::pair<int, int>;
+
+/**
+ * \brief Find the single colour pair that fits the whole image best.
+ *
+ * The pair with the lowest summed quantisation error over all 8×8 blocks
+ * is returned.
+ */
+[[nodiscard]] ColourPair best_global_colours(const Magick::Image &img) {
+  double best_err = std::numeric_limits<double>::infinity();
+  ColourPair best{ 0, 1 };
+  for(int i : std::views::iota(0, NCOLORS)) {
+    for(int j : std::views::iota(i + 1, NCOLORS)) {
+      double e = 0.0;
+      for(unsigned y = 0; y + BLK <= img.rows(); y += BLK) {
+        for(unsigned x = 0; x + BLK <= img.columns(); x += BLK) {
+          e += block_error(img, x, y, i, j);
+        }
+      }
+      if(e < best_err) {
+        best_err = e;
+        best = { i, j };
+      }
+    }
+  }
+  return best;
+}
+
 [[nodiscard]] std::pair<std::vector<bool>, double>
 quantise_block(Magick::Image &img, unsigned x_, unsigned y_, int cidx0,
                int cidx1, bool verbose) {
@@ -457,18 +488,25 @@ quantise_block(Magick::Image &img, unsigned x_, unsigned y_, int cidx0,
  *
  * \param img the image to handle
  * \param verbose output some diagnostic information per block
+ * \param colours if set, use this (bit 0, bit 1) colour pair for every block
  */
-[[nodiscard]] std::list<CharBlock> handle_block_wise(Magick::Image &img, bool verbose) {
+[[nodiscard]] std::list<CharBlock>
+handle_block_wise(Magick::Image &img, bool verbose,
+                  std::optional<ColourPair> colours = std::nullopt) {
   std::list<CharBlock> blocks;
 
   for(unsigned y = 0; y < img.rows(); y += BLK) {
     for(unsigned x = 0; x < img.columns(); x += BLK) {
       double best_err = std::numeric_limits<double>::infinity();
       int best_i = 0, best_j = 1;
-      for(int i : std::views::iota(0, NCOLORS)) {
-        for(int j : std::views::iota(i + 1, NCOLORS)) {
-          if(const double e = block_error(img, x, y, i, j); e < best_err) {
-            std::tie(best_i, best_j, best_err) = std::tuple{ i, j, e };
+      if(colours) {
+        std::tie(best_i, best_j) = *colours;
+      } else {
+        for(int i : std::views::iota(0, NCOLORS)) {
+          for(int j : std::views::iota(i + 1, NCOLORS)) {
+            if(const double e = block_error(img, x, y, i, j); e < best_err) {
+              std::tie(best_i, best_j, best_err) = std::tuple{ i, j, e };
+            }
           }
         }
       }
@@ -493,7 +531,8 @@ quantise_block(Magick::Image &img, unsigned x_, unsigned y_, int cidx0,
 // ─────────────────────────────────────────────────────
 
 [[nodiscard]] std::list<CharBlock>
-handle_block_wise_stucki(Magick::Image &img) {
+handle_block_wise_stucki(Magick::Image &img,
+                         std::optional<ColourPair> colours = std::nullopt) {
   const unsigned W = img.columns();
   const unsigned H = img.rows();
 
@@ -523,15 +562,18 @@ handle_block_wise_stucki(Magick::Image &img) {
     for(unsigned bx = 0; bx < BW; ++bx) {
       double best_err = std::numeric_limits<double>::infinity();
       int best_i = 0, best_j = 1;
-      for(int i : std::views::iota(0, NCOLORS)) {
-        for(int j : std::views::iota(i + 1, NCOLORS)) {
-          if(const double e = block_error(img, bx * BLK, by * BLK, i, j);
-             e < best_err) {
-            std::tie(best_i, best_j, best_err) = std::tuple{ i, j, e };
+      if(colours) {
+        std::tie(best_i, best_j) = *colours;
+      } else {
+        for(int i : std::views::iota(0, NCOLORS)) {
+          for(int j : std::views::iota(i + 1, NCOLORS)) {
+            if(const double e = block_error(img, bx * BLK, by * BLK, i, j);
+               e < best_err) {
+              std::tie(best_i, best_j, best_err) = std::tuple{ i, j, e };
+            }
           }
         }
       }
-      ;
       block_colors[by * BW + bx] = { best_i, best_j };
     }
   }
@@ -642,6 +684,8 @@ int main(int argc, char **argv) {
   std::string palette_name = "grafx2";
   std::string output_file;
   std::string first_bit_name = "any";
+  bool uniform_colours = false;
+  std::vector<int> colours_opt;
 
   app.add_option("file", input_file, "Input image file to convert")
   ->required()
@@ -671,6 +715,16 @@ int main(int argc, char **argv) {
                  "pixel); the colours of the first block are swapped if "
                  "needed (default: any = do not care)")
   ->check(CLI::IsMember({ "any", "0", "1" }));
+
+  app.add_flag("--uniform-colours", uniform_colours,
+               "Use one single colour pair for the whole picture instead of "
+               "choosing colours per 8×8 cell; the pair is selected "
+               "automatically");
+  app.add_option("--colours", colours_opt,
+                 "Use this colour pair (BG FG palette indices, 0-15) for the "
+                 "whole picture; implies --uniform-colours")
+  ->expected(2)
+  ->check(CLI::Range(0, NCOLORS - 1));
 
   // Build a human-readable list of palette names for the help text.
   std::string palette_list;
@@ -727,8 +781,20 @@ int main(int argc, char **argv) {
     img.display();
   }
 
-  const std::list<CharBlock> blocks =
-    use_stucki ? handle_block_wise_stucki(img) : handle_block_wise(img, verbose);
+  std::optional<ColourPair> colours;
+  if(!colours_opt.empty()) {
+    colours = ColourPair{ colours_opt.at(0), colours_opt.at(1) };
+  } else if(uniform_colours) {
+    colours = best_global_colours(img);
+  }
+  if(colours) {
+    std::cerr << std::format("Uniform colours: bit 0 = {}, bit 1 = {}\n",
+                             colours->first, colours->second);
+  }
+
+  std::list<CharBlock> blocks =
+    use_stucki ? handle_block_wise_stucki(img, colours)
+    : handle_block_wise(img, verbose, colours);
 
   if(write_ilbm) {
     img.write(change_ending(input_file, "ilbm"));
@@ -739,12 +805,23 @@ int main(int argc, char **argv) {
 
   const std::string c64_path =
     output_file.empty() ? change_ending(input_file, "c64") : output_file;
-  std::ofstream outfile(c64_path, std::ios::binary);
   std::optional<bool> first_bit;
   if(first_bit_name != "any") {
     first_bit = (first_bit_name == "1");
   }
-  write_char_blocks(blocks, outfile, 0x2000, first_bit);
+  if(colours && first_bit && blocks.front().data.front() != *first_bit) {
+    // Swapping a single block would break the uniform colours, so swap
+    // the colours of all blocks instead (the displayed image is unchanged).
+    if(!colours_opt.empty()) {
+      throw std::invalid_argument(
+        "--first-bit cannot be met with the given --colours; swap BG and FG");
+    }
+    for(CharBlock &blk : blocks) {
+      blk.swap_colours();
+    }
+  }
+  std::ofstream outfile(c64_path, std::ios::binary);
+  write_char_blocks(blocks, outfile, 0x2000, colours.has_value(), first_bit);
 
   if(display_gfx) {
     img.display();
