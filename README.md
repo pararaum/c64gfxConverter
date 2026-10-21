@@ -71,6 +71,9 @@ Options:
   --write-ilbm                Also save the quantised image as ILBM
   --write-xpm                 Also save the quantised image as XPM
   --display                   Display the image before and after conversion
+  --first-bit TEXT:{any,0,1}  Preferred value of the very first bitmap bit (top-left
+                              pixel); the colours of the first block are swapped if
+                              needed (default: any = do not care)
 ```
 
 ## petscii80x50 ##

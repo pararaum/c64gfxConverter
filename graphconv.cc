@@ -39,6 +39,7 @@
 #include <limits>
 #include <list>
 #include <map>
+#include <optional>
 #include <ranges>
 #include <stdexcept>
 #include <string>
@@ -287,7 +288,8 @@ struct CharBlock {
      * returns true. Then the algorithm can check if all other
      * elements are the same.
      */
-    return std::all_of(data.begin(), data.end(), std::identity());
+    return std::all_of(data.begin(), data.end(),
+                       [first = data.front()](bool b) { return b == first; });
   }
 };
 
@@ -336,9 +338,15 @@ struct CharBlock {
  *    left-to-right / top-to-bottom (320×200÷8 = 8 000 bytes)
  *  - Colour attribute section: one byte per block,
  *    high nybble = idx1, low nybble = idx0 (40×25 = 1 000 bytes)
+ *
+ * \param first_bit if set, the very first bitmap bit (top-left pixel) is
+ *        forced to this value by swapping the colours of the first block
+ *        (which does not change the displayed image). std::nullopt means
+ *        "do not care".
  */
 void write_char_blocks(const std::list<CharBlock> &blocks, std::ostream &out,
-                       unsigned short addr = 0x2000) {
+                       unsigned short addr = 0x2000,
+                       std::optional<bool> first_bit = std::nullopt) {
   CharBlock blk; // Used for assignment and handling the inversion.
   std::list<char> colours; // Store the colour blocks here.
 
@@ -348,6 +356,7 @@ void write_char_blocks(const std::list<CharBlock> &blocks, std::ostream &out,
   // in compressing the image.
   int last0 = -1;
   int last1 = -1;
+  bool is_first = true;
   for(const CharBlock &blkiterator : blocks) {
     assert(blk.data.size() == BLK * BLK);
     
@@ -363,6 +372,10 @@ void write_char_blocks(const std::list<CharBlock> &blocks, std::ostream &out,
       blk.idx0 = last0;
       blk.idx1 = last1;
     }
+    if(is_first && first_bit && blk.data.front() != *first_bit) {
+      blk.swap_colours();
+    }
+    is_first = false;
     for(auto row : blk.data | std::views::chunk(BLK)) {
       uint8_t byte = 0;
       for(bool bit : row) {
@@ -628,6 +641,7 @@ int main(int argc, char **argv) {
   bool no_crop = false;
   std::string palette_name = "grafx2";
   std::string output_file;
+  std::string first_bit_name = "any";
 
   app.add_option("file", input_file, "Input image file to convert")
   ->required()
@@ -651,6 +665,12 @@ int main(int argc, char **argv) {
   app.add_option("-o,--output", output_file,
                  "Output file path (default: input filename with extension "
                  "replaced by \".c64\")");
+
+  app.add_option("--first-bit", first_bit_name,
+                 "Preferred value of the very first bitmap bit (top-left "
+                 "pixel); the colours of the first block are swapped if "
+                 "needed (default: any = do not care)")
+  ->check(CLI::IsMember({ "any", "0", "1" }));
 
   // Build a human-readable list of palette names for the help text.
   std::string palette_list;
@@ -720,7 +740,11 @@ int main(int argc, char **argv) {
   const std::string c64_path =
     output_file.empty() ? change_ending(input_file, "c64") : output_file;
   std::ofstream outfile(c64_path, std::ios::binary);
-  write_char_blocks(blocks, outfile);
+  std::optional<bool> first_bit;
+  if(first_bit_name != "any") {
+    first_bit = (first_bit_name == "1");
+  }
+  write_char_blocks(blocks, outfile, 0x2000, first_bit);
 
   if(display_gfx) {
     img.display();
